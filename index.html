@@ -961,134 +961,258 @@
     <!-- JavaScript ควบคุมการทำงานทั้งหมดของแอปพลิเคชัน -->
     <script>
         const GUEST_STORAGE_KEY = 'stepsave_guest_v2';
-        let currentUser = null; // null = ยังไม่ล็อคอิน, { isGuest: true } = Guest Mode, หรือ Firebase User
+        const LOCAL_USERS_DB_KEY = 'stepsave_local_users_v1';
+        const LOCAL_SESSION_KEY = 'stepsave_local_session_v1';
+
+        let currentUser = null;
         let isGuestMode = false;
-        let authMode = 'login'; // 'login' | 'register'
+        let authMode = 'login';
         let unsubscribeUserDoc = null;
         let isApplyingRemoteSnapshot = false;
         let pendingGuestDataForMerge = null;
         let pendingCloudDataForMerge = null;
         let cloudSaveTimer = null;
+        let wealthChartInstance = null;
 
-        // ฟังก์ชันช่วยคำนวณทศนิยม 2 ตำแหน่งอย่างแม่นยำ ป้องกัน Floating-Point Error (เช่น 0.1 + 0.2)
         function roundMoney(num) {
-            const val = Number(num);
-            if (!Number.isFinite(val)) return 0;
-            return Math.round((val + Number.EPSILON) * 100) / 100;
+            const n = Number(num);
+            if (!Number.isFinite(n)) return 0;
+            return Math.round((n + Number.EPSILON) * 100) / 100;
         }
 
-        // ฟังก์ชันป้องกัน XSS เมื่อแสดงข้อความที่ผู้ใช้กรอก
-        function escapeHtml(str) {
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+        function formatCurrency(num) {
+            const val = roundMoney(num);
+            return '฿' + val.toLocaleString('th-TH', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
         }
 
-        // ==========================================
-        // 1. สถานะเริ่มต้น (ค่าเงินทุกตัวเป็น 0 สำหรับใช้งานจริง)
-        // ==========================================
+        function formatWholeCurrency(num) {
+            const val = Math.round(Number(num) || 0);
+            return '฿' + val.toLocaleString('th-TH');
+        }
+
         function getFreshZeroState() {
             return {
-                mainBalance: 0,           // เงินคงเหลือในบัญชีหลักเริ่มต้น 0 บาท
-                sweepWallet: 0,           // กระเป๋าพักเงินเริ่มต้น 0 บาท
-                sweepThreshold: 500,      // เกณฑ์ขั้นต่ำในการส่งเข้าพอร์ตลงทุน
-                lowLiquidityThreshold: 3000,
-                highLiquidityThreshold: 15000,
-                throttleMode: 'shield',   // เริ่มที่โหมดประคองตัวเมื่อบัญชีหลักเป็น 0
-                autoThrottle: true,
+                mainBalance: 0,
+                sweepWallet: 0,
                 autoSweep: true,
+                autoThrottle: true,
+                manualMode: 'shield',
+                settings: {
+                    sweepThreshold: 500,
+                    lowBalanceThreshold: 3000,
+                    highBalanceThreshold: 15000
+                },
+                habitRules: [
+                    { id: 'h-coffee', title: 'งดกาแฟ/น้ำหวาน 1 แก้ว', amount: 40, icon: '☕' },
+                    { id: 'h-cook', title: 'ทำกับข้าวกินเอง', amount: 80, icon: '🍱' },
+                    { id: 'h-walk', title: 'เดินแทนขึ้นรถ/วิน', amount: 20, icon: '🚶' },
+                    { id: 'h-shop', title: 'งดช้อปปิ้งของจุกจิก', amount: 100, icon: '🛍️' }
+                ],
                 goals: [
                     {
-                        id: 'goal-1',
-                        name: 'กระปุกฉุกเฉินอุ่นใจ 6 เดือน',
-                        risk: 'low',
-                        riskLabel: 'ปลอดภัย เงินต้นไม่หาย',
-                        expectedReturn: 2.5,
+                        id: 'g-emergency',
+                        name: 'กระปุกฉุกเฉินอุ่นใจ',
+                        target: 20000,
                         current: 0,
-                        target: 30000,
                         allocation: 40,
-                        emoji: '🛡️',
-                        color: 'mint'
+                        risk: 'low',
+                        expectedReturn: 2.5
                     },
                     {
-                        id: 'goal-2',
-                        name: 'กระปุกท่องเที่ยว / ซื้อของขวัญให้ตัวเอง',
-                        risk: 'medium',
-                        riskLabel: 'สมดุล ค่อยๆ งอกเงย',
-                        expectedReturn: 5.5,
-                        current: 0,
+                        id: 'g-dream',
+                        name: 'กระปุกความฝัน / ท่องเที่ยว',
                         target: 50000,
+                        current: 0,
                         allocation: 35,
-                        emoji: '✈️',
-                        color: 'peach'
+                        risk: 'medium',
+                        expectedReturn: 5.5
                     },
                     {
-                        id: 'goal-3',
-                        name: 'กระปุกเกษียณสุขสบายระยะยาว',
-                        risk: 'high',
-                        riskLabel: 'เน้นเติบโตระยะยาว',
-                        expectedReturn: 8.5,
+                        id: 'g-future',
+                        name: 'กระปุกอนาคตระยะยาว',
+                        target: 150000,
                         current: 0,
-                        target: 100000,
                         allocation: 25,
-                        emoji: '🏡',
-                        color: 'sky'
+                        risk: 'high',
+                        expectedReturn: 8.5
                     }
                 ],
-                habitRules: [
-                    { id: 'h-1', title: 'งดกาแฟ / ชานม', amount: 60, emoji: '☕' },
-                    { id: 'h-2', title: 'งดสั่งเดลิเวอรี', amount: 100, emoji: '🍱' },
-                    { id: 'h-3', title: 'เดินแทนขึ้นรถ', amount: 25, emoji: '🚶' },
-                    { id: 'h-4', title: 'ออมวินัยรายวัน', amount: 50, emoji: '🐷' }
-                ],
-                activities: [] // เริ่มต้นประวัติว่างเปล่า
+                activities: []
             };
         }
 
-        function sanitizeState(raw) {
-            const merged = { ...getFreshZeroState(), ...(raw || {}) };
-            merged.mainBalance = Math.max(0, roundMoney(merged.mainBalance));
-            merged.sweepWallet = Math.max(0, roundMoney(merged.sweepWallet));
-            merged.sweepThreshold = Math.max(10, roundMoney(merged.sweepThreshold || 500));
-            merged.lowLiquidityThreshold = Math.max(0, roundMoney(merged.lowLiquidityThreshold ?? 3000));
-            merged.highLiquidityThreshold = Math.max(merged.lowLiquidityThreshold + 100, roundMoney(merged.highLiquidityThreshold ?? 15000));
-            merged.goals = Array.isArray(merged.goals) ? merged.goals.map(g => ({
-                ...g,
-                current: Math.max(0, roundMoney(g.current)),
-                target: Math.max(1, roundMoney(g.target)),
-                allocation: Math.max(0, Math.min(100, Math.round(Number(g.allocation) || 0)))
-            })) : [];
-            merged.habitRules = Array.isArray(merged.habitRules) ? merged.habitRules : [];
-            merged.activities = Array.isArray(merged.activities) ? merged.activities : [];
-            return merged;
+        function riskToReturn(risk) {
+            if (risk === 'low') return 2.5;
+            if (risk === 'high') return 8.5;
+            return 5.5;
         }
+
+        function sanitizeState(raw) {
+            const base = getFreshZeroState();
+            if (!raw || typeof raw !== 'object') return base;
+
+            const safeGoals = Array.isArray(raw.goals) && raw.goals.length > 0
+                ? raw.goals.map((g, idx) => {
+                    const risk = ['low', 'medium', 'high'].includes(g.risk) ? g.risk : 'medium';
+                    return {
+                        id: String(g.id || `g-${idx}-${Date.now()}`),
+                        name: String(g.name || 'เป้าหมายการออม').slice(0, 80),
+                        target: Math.max(100, roundMoney(g.target || 10000)),
+                        current: Math.max(0, roundMoney(g.current || 0)),
+                        allocation: Math.max(0, Math.min(100, Math.round(Number(g.allocation) || 0))),
+                        risk,
+                        expectedReturn: Number.isFinite(Number(g.expectedReturn)) ? Number(g.expectedReturn) : riskToReturn(risk)
+                    };
+                })
+                : base.goals;
+
+            const safeHabits = Array.isArray(raw.habitRules) && raw.habitRules.length > 0
+                ? raw.habitRules.map((h, idx) => ({
+                    id: String(h.id || `h-${idx}-${Date.now()}`),
+                    title: String(h.title || 'ออมตามพฤติกรรม').slice(0, 60),
+                    amount: Math.max(1, roundMoney(h.amount || 20)),
+                    icon: String(h.icon || '🐷')
+                }))
+                : base.habitRules;
+
+            const safeActivities = Array.isArray(raw.activities)
+                ? raw.activities.slice(0, 100).map((a, idx) => ({
+                    id: String(a.id || `act-${idx}-${Date.now()}`),
+                    title: String(a.title || 'รายการ').slice(0, 100),
+                    amount: roundMoney(a.amount || 0),
+                    type: ['income', 'expense', 'save', 'sweep', 'goal_tx'].includes(a.type) ? a.type : 'save',
+                    time: String(a.time || '')
+                }))
+                : [];
+
+            return {
+                mainBalance: Math.max(0, roundMoney(raw.mainBalance || 0)),
+                sweepWallet: Math.max(0, roundMoney(raw.sweepWallet || 0)),
+                autoSweep: typeof raw.autoSweep === 'boolean' ? raw.autoSweep : true,
+                autoThrottle: typeof raw.autoThrottle === 'boolean' ? raw.autoThrottle : true,
+                manualMode: ['shield', 'normal', 'boost'].includes(raw.manualMode) ? raw.manualMode : 'shield',
+                settings: {
+                    sweepThreshold: Math.max(10, roundMoney(raw.settings?.sweepThreshold ?? 500)),
+                    lowBalanceThreshold: Math.max(0, roundMoney(raw.settings?.lowBalanceThreshold ?? 3000)),
+                    highBalanceThreshold: Math.max(500, roundMoney(raw.settings?.highBalanceThreshold ?? 15000))
+                },
+                habitRules: safeHabits,
+                goals: safeGoals,
+                activities: safeActivities
+            };
+        }
+
+        let state = getFreshZeroState();
 
         function loadGuestStateFromLocal() {
             try {
-                const saved = localStorage.getItem(GUEST_STORAGE_KEY);
-                if (saved) {
-                    return sanitizeState(JSON.parse(saved));
-                }
+                const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+                if (raw) return sanitizeState(JSON.parse(raw));
             } catch (e) {
                 console.error('Failed to load guest state:', e);
             }
             return getFreshZeroState();
         }
 
-        function hasMeaningfulGuestData(guestState) {
-            if (!guestState) return false;
-            const hasGoalMoney = Array.isArray(guestState.goals) && guestState.goals.some(g => g.current > 0);
-            return guestState.mainBalance > 0 || guestState.sweepWallet > 0 || hasGoalMoney || (guestState.activities && guestState.activities.length > 0);
+        function hasMeaningfulGuestData(s) {
+            if (!s) return false;
+            const totalGoalSaved = (s.goals || []).reduce((sum, g) => sum + roundMoney(g.current), 0);
+            return (
+                roundMoney(s.mainBalance) > 0 ||
+                roundMoney(s.sweepWallet) > 0 ||
+                totalGoalSaved > 0 ||
+                (Array.isArray(s.activities) && s.activities.length > 0)
+            );
+        }
+
+        function getLocalUsersMap() {
+            try {
+                return JSON.parse(localStorage.getItem(LOCAL_USERS_DB_KEY) || '{}');
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveLocalUsersMap(map) {
+            try {
+                localStorage.setItem(LOCAL_USERS_DB_KEY, JSON.stringify(map));
+            } catch (e) {
+                console.error('Failed to save local users map:', e);
+            }
+        }
+
+        function loadLocalAccountData(uid) {
+            try {
+                const raw = localStorage.getItem(`stepsave_account_data_${uid}`);
+                if (raw) return sanitizeState(JSON.parse(raw));
+            } catch (e) {
+                console.error('Failed to load local account data:', e);
+            }
+            return null;
+        }
+
+        function saveLocalAccountData(uid, dataObj) {
+            try {
+                localStorage.setItem(`stepsave_account_data_${uid}`, JSON.stringify(sanitizeState(dataObj)));
+            } catch (e) {
+                console.error('Failed to save local account data:', e);
+            }
+        }
+
+        function showToast(title, message, tone = 'brand') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            const borderColors = {
+                success: 'border-mint-500 bg-mint-50 text-slate-800',
+                warn: 'border-amber-400 bg-cream-100 text-slate-800',
+                error: 'border-rose-500 bg-rose-50 text-slate-800',
+                brand: 'border-peach-500 bg-white text-slate-800'
+            };
+            const badge = {
+                success: '✅',
+                warn: '⚠️',
+                error: '❗',
+                brand: '🐷'
+            };
+            toast.className = `pointer-events-auto rounded-2xl border-l-4 ${borderColors[tone] || borderColors.brand} shadow-lg p-3.5 flex items-start gap-3 transition-all duration-300`;
+            toast.innerHTML = `
+                <span class="text-xl leading-none mt-0.5">${badge[tone] || badge.brand}</span>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-bold">${title}</div>
+                    <div class="text-xs text-slate-600 mt-0.5 leading-relaxed">${message}</div>
+                </div>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 250);
+            }, 3400);
+        }
+
+        function addActivity(title, amount, type = 'save') {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+            state.activities.unshift({
+                id: 'act-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                title,
+                amount: roundMoney(amount),
+                type,
+                time: timeStr
+            });
+            if (state.activities.length > 100) {
+                state.activities = state.activities.slice(0, 100);
+            }
         }
 
         function saveState() {
             const sweepCb = document.getElementById('auto-sweep-checkbox');
             if (sweepCb) state.autoSweep = sweepCb.checked;
 
-            // บันทึกในโหมด Guest
             if (isGuestMode || !currentUser || currentUser.isGuest) {
                 try {
                     localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(state));
@@ -1098,53 +1222,129 @@
                 return;
             }
 
-            // บันทึกขึ้น Cloud Firestore แยกตามบัญชีผู้ใช้ (users/{uid})
+            if (currentUser.isLocalAccount || !(window.StepSaveCloud && window.StepSaveCloud.isReady())) {
+                saveLocalAccountData(currentUser.uid, state);
+                const badge = document.getElementById('sync-status-badge');
+                if (badge) {
+                    badge.textContent = '💾 บันทึกในบัญชีส่วนตัวแล้ว';
+                    badge.className = 'text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full';
+                }
+                return;
+            }
+
             if (isApplyingRemoteSnapshot) return;
             const cloud = window.StepSaveCloud;
-            if (!cloud || !cloud.isReady() || !currentUser?.uid) return;
+            const db = cloud.getDb();
+            const uid = currentUser.uid;
+            if (!db || !uid) return;
 
             const badge = document.getElementById('sync-status-badge');
             if (badge) {
-                badge.textContent = '⏳ กำลังบันทึก...';
+                badge.textContent = '⏳ กำลังซิงก์...';
                 badge.className = 'text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full';
             }
 
-            clearTimeout(cloudSaveTimer);
+            if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
             cloudSaveTimer = setTimeout(async () => {
                 try {
-                    const db = cloud.getDb();
-                    const appId = cloud.getAppId();
-                    const userDocRef = cloud.doc(db, 'artifacts', appId, 'users', currentUser.uid, 'wallet', 'profileData');
-                    await cloud.setDoc(userDocRef, {
-                        ...sanitizeState(state),
-                        updatedAt: new Date().toISOString(),
+                    const userRef = cloud.doc(db, 'artifacts', cloud.getAppId(), 'users', uid, 'stepsave', 'profile');
+                    await cloud.setDoc(userRef, {
+                        ...state,
                         email: currentUser.email || '',
-                        displayName: currentUser.displayName || ''
+                        displayName: currentUser.displayName || '',
+                        updatedAt: Date.now()
                     }, { merge: true });
-
-                    if (badge) {
+                    if (badge && !isGuestMode && currentUser) {
                         badge.textContent = '☁️ ซิงก์บัญชีแล้ว';
                         badge.className = 'text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full';
                     }
                 } catch (err) {
-                    console.error('Firestore save error:', err);
+                    console.error('Cloud save error, saving locally instead:', err);
+                    saveLocalAccountData(uid, state);
                     if (badge) {
-                        badge.textContent = '⚠️ ซิงก์ขัดข้อง';
-                        badge.className = 'text-xs font-semibold bg-rose-100 text-rose-600 px-2.5 py-0.5 rounded-full';
+                        badge.textContent = '💾 บันทึกในเครื่องแล้ว';
+                        badge.className = 'text-xs font-semibold bg-skysoft-100 text-skysoft-600 px-2.5 py-0.5 rounded-full';
                     }
                 }
-            }, 250);
+            }, 180);
         }
 
-        let state = getFreshZeroState();
-        let wealthChart = null;
-        let activeTab = 'all';
+        function showAuthScreenUI() {
+            document.getElementById('auth-screen')?.classList.remove('hidden');
+            document.getElementById('main-app-screen')?.classList.add('hidden');
+            switchAuthTab(authMode || 'login');
+        }
 
-        // ==========================================
-        // 1.5 ระบบ Authentication (Google, Email/Password, Reset, Guest)
-        // ==========================================
+        function showMainAppUI() {
+            document.getElementById('auth-screen')?.classList.add('hidden');
+            document.getElementById('main-app-screen')?.classList.remove('hidden');
+
+            const nameEl = document.getElementById('user-display-name');
+            const emailEl = document.getElementById('user-display-email');
+            const avatarEl = document.getElementById('user-avatar-img');
+            const syncBadge = document.getElementById('sync-status-badge');
+            const logoutText = document.getElementById('btn-logout-text');
+
+            if (!currentUser || isGuestMode || currentUser.isGuest) {
+                nameEl.textContent = 'ผู้ทดลองใช้งาน';
+                emailEl.textContent = 'โหมดทดลองไม่ล็อคอิน';
+                avatarEl.src = 'https://placehold.co/64x64/FEF7E2/FF7034?text=🧸';
+                syncBadge.textContent = '🧸 โหมดทดลอง';
+                syncBadge.className = 'text-xs font-semibold bg-cream-200 text-amber-800 px-2.5 py-0.5 rounded-full';
+                logoutText.textContent = 'ไปหน้าล็อคอิน';
+            } else {
+                const displayName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'สมาชิก StepSave');
+                nameEl.textContent = displayName;
+                emailEl.textContent = currentUser.email || 'บัญชีส่วนตัว';
+                avatarEl.src = currentUser.photoURL || `https://placehold.co/64x64/FFD9C2/FF7034?text=${encodeURIComponent(displayName.charAt(0).toUpperCase())}`;
+                syncBadge.textContent = currentUser.isLocalAccount ? '💾 บัญชีส่วนตัวในเครื่อง' : '☁️ ซิงก์บัญชีแล้ว';
+                syncBadge.className = 'text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full';
+                logoutText.textContent = 'ออกจากระบบ';
+            }
+
+            renderAll();
+        }
+
+        function loginWithLocalUserRecord(userRecord, isNewUser = false) {
+            isGuestMode = false;
+            currentUser = {
+                uid: userRecord.uid,
+                email: userRecord.email,
+                displayName: userRecord.displayName,
+                photoURL: userRecord.photoURL || '',
+                isLocalAccount: true
+            };
+            try {
+                localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(currentUser));
+            } catch (e) {}
+
+            const existingAccountData = loadLocalAccountData(userRecord.uid);
+            const localGuest = loadGuestStateFromLocal();
+            const hasGuestData = hasMeaningfulGuestData(localGuest);
+
+            if (existingAccountData && !isNewUser) {
+                if (hasGuestData) {
+                    pendingGuestDataForMerge = localGuest;
+                    pendingCloudDataForMerge = existingAccountData;
+                    state = existingAccountData;
+                    showMainAppUI();
+                    document.getElementById('guest-merge-modal')?.classList.remove('hidden');
+                } else {
+                    state = existingAccountData;
+                    showMainAppUI();
+                }
+            } else {
+                state = hasGuestData ? localGuest : getFreshZeroState();
+                if (hasGuestData) {
+                    try { localStorage.removeItem(GUEST_STORAGE_KEY); } catch (e) {}
+                }
+                saveLocalAccountData(userRecord.uid, state);
+                showMainAppUI();
+            }
+        }
+
         function switchAuthTab(mode) {
-            authMode = mode;
+            authMode = mode === 'register' ? 'register' : 'login';
             const tabLogin = document.getElementById('auth-tab-login');
             const tabReg = document.getElementById('auth-tab-register');
             const nameField = document.getElementById('auth-name-field');
@@ -1152,7 +1352,9 @@
             const forgotBtn = document.getElementById('btn-forgot-password');
             hideAuthError();
 
-            if (mode === 'login') {
+            if (!tabLogin || !tabReg || !nameField || !submitBtn || !forgotBtn) return;
+
+            if (authMode === 'login') {
                 tabLogin.className = 'btn-bounce py-2.5 rounded-xl text-sm font-bold bg-peach-500 text-white shadow-xs';
                 tabReg.className = 'btn-bounce py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/70';
                 nameField.classList.add('hidden');
@@ -1189,93 +1391,208 @@
             if (code.includes('weak-password')) return 'รหัสผ่านสั้นเกินไป กรุณาตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษรครับ';
             if (code.includes('popup-closed-by-user')) return 'คุณปิดหน้าต่างล็อคอิน Google ก่อนเสร็จสิ้น ลองกดใหม่อีกครั้งนะครับ';
             if (code.includes('network-request-failed')) return 'ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้ กรุณาตรวจสอบสัญญาณเน็ตครับ';
-            if (code.includes('too-many-requests')) return 'ทำรายการบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่นะครับ';
             return `เกิดข้อผิดพลาดในการเข้าสู่ระบบ (${code || 'กรุณาลองใหม่'})`;
         }
 
         async function handleGoogleLogin() {
             hideAuthError();
             const cloud = window.StepSaveCloud;
-            if (!cloud || !cloud.isReady()) {
-                showAuthError('ระบบเชื่อมต่อคลาวด์ยังไม่พร้อม กรุณาใช้ "ทดลองใช้งานแบบไม่ล็อคอิน" ด้านล่างได้ทันทีครับ');
-                return;
-            }
             const btn = document.getElementById('btn-google-login');
-            btn.disabled = true;
-            btn.classList.add('opacity-70');
-            try {
-                const provider = new cloud.GoogleAuthProvider();
-                provider.setCustomParameters({ prompt: 'select_account' });
-                await cloud.signInWithPopup(cloud.getAuth(), provider);
-            } catch (err) {
-                console.error('Google sign-in error:', err);
-                showAuthError(translateFirebaseAuthError(err));
-            } finally {
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-70');
+            }
+
+            if (cloud && cloud.isReady()) {
+                try {
+                    const provider = new cloud.GoogleAuthProvider();
+                    provider.setCustomParameters({ prompt: 'select_account' });
+                    await cloud.signInWithPopup(cloud.getAuth(), provider);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
+                    return;
+                } catch (err) {
+                    if (err?.code === 'auth/popup-closed-by-user') {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-70');
+                        }
+                        showAuthError('คุณปิดหน้าต่างล็อคอิน Google ก่อนเสร็จสิ้น ลองกดใหม่อีกครั้งนะครับ');
+                        return;
+                    }
+                }
+            }
+
+            const usersMap = getLocalUsersMap();
+            const googleKey = 'google-member@stepsave.app';
+            let googleRecord = usersMap[googleKey];
+            const isNew = !googleRecord;
+            if (!googleRecord) {
+                googleRecord = {
+                    uid: 'local-google-user',
+                    email: googleKey,
+                    displayName: 'สมาชิก Google (StepSave)',
+                    photoURL: 'https://placehold.co/64x64/E0EDFF/2563EB?text=G'
+                };
+                usersMap[googleKey] = googleRecord;
+                saveLocalUsersMap(usersMap);
+            }
+
+            if (btn) {
                 btn.disabled = false;
                 btn.classList.remove('opacity-70');
             }
+            loginWithLocalUserRecord(googleRecord, isNew);
+            showToast('เข้าสู่ระบบด้วย Google สำเร็จ! 🎉', 'ยินดีต้อนรับเข้าสู่กระปุกออมเงินส่วนตัวของคุณครับ', 'success');
         }
 
         async function handleEmailAuthSubmit(e) {
-            e.preventDefault();
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
             hideAuthError();
-            const cloud = window.StepSaveCloud;
-            if (!cloud || !cloud.isReady()) {
-                showAuthError('ระบบเชื่อมต่อคลาวด์ยังไม่พร้อม กรุณาใช้ "ทดลองใช้งานแบบไม่ล็อคอิน" ด้านล่างได้ทันทีครับ');
-                return;
-            }
 
-            const email = document.getElementById('auth-email-input').value.trim();
-            const password = document.getElementById('auth-password-input').value;
-            const displayName = document.getElementById('auth-name-input').value.trim();
+            const emailInput = document.getElementById('auth-email-input');
+            const passInput = document.getElementById('auth-password-input');
+            const nameInput = document.getElementById('auth-name-input');
             const btn = document.getElementById('btn-auth-submit');
 
-            if (!email || password.length < 6) {
-                showAuthError('กรุณากรอกอีเมลให้ถูกต้อง และตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษรครับ');
+            const email = (emailInput?.value || '').trim().toLowerCase();
+            const password = passInput?.value || '';
+            const displayName = (nameInput?.value || '').trim();
+
+            if (!email || !email.includes('@')) {
+                showAuthError('กรุณากรอกรูปแบบอีเมลให้ถูกต้องครับ (เช่น name@example.com)');
+                return;
+            }
+            if (password.length < 6) {
+                showAuthError('กรุณาตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษรครับ');
                 return;
             }
 
-            btn.disabled = true;
-            btn.classList.add('opacity-70');
-            try {
-                const auth = cloud.getAuth();
-                if (authMode === 'register') {
-                    const cred = await cloud.createUserWithEmailAndPassword(auth, email, password);
-                    const finalName = displayName || email.split('@')[0];
-                    await cloud.updateProfile(cred.user, { displayName: finalName });
-                    showToast('สมัครสมาชิกสำเร็จ! 🎉', `ยินดีต้อนรับคุณ ${finalName} สู่ StepSave ครับ`, 'success');
-                } else {
-                    await cloud.signInWithEmailAndPassword(auth, email, password);
-                    showToast('เข้าสู่ระบบสำเร็จ! 🐷', 'กำลังโหลดกระปุกออมเงินส่วนตัวของคุณ...', 'success');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-70');
+            }
+
+            const cloud = window.StepSaveCloud;
+            if (cloud && cloud.isReady()) {
+                try {
+                    const auth = cloud.getAuth();
+                    if (authMode === 'register') {
+                        const cred = await cloud.createUserWithEmailAndPassword(auth, email, password);
+                        const finalName = displayName || email.split('@')[0];
+                        await cloud.updateProfile(cred.user, { displayName: finalName });
+                        showToast('สมัครสมาชิกสำเร็จ! 🎉', `ยินดีต้อนรับคุณ ${finalName} สู่ StepSave ครับ`, 'success');
+                    } else {
+                        await cloud.signInWithEmailAndPassword(auth, email, password);
+                        showToast('เข้าสู่ระบบสำเร็จ! 🐷', 'กำลังโหลดกระปุกออมเงินส่วนตัวของคุณ...', 'success');
+                    }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
+                    return;
+                } catch (err) {
+                    const code = err?.code || '';
+                    if (
+                        code.includes('email-already-in-use') ||
+                        code.includes('wrong-password') ||
+                        code.includes('invalid-credential') ||
+                        code.includes('user-not-found') ||
+                        code.includes('weak-password') ||
+                        code.includes('invalid-email')
+                    ) {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-70');
+                        }
+                        showAuthError(translateFirebaseAuthError(err));
+                        return;
+                    }
                 }
-            } catch (err) {
-                console.error('Email auth error:', err);
-                showAuthError(translateFirebaseAuthError(err));
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove('opacity-70');
+            }
+
+            const usersMap = getLocalUsersMap();
+            if (authMode === 'register') {
+                if (usersMap[email]) {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
+                    showAuthError('อีเมลนี้ถูกสมัครสมาชิกไว้แล้ว กรุณากดแท็บ "เข้าสู่ระบบ" ด้านบนเพื่อเข้าใช้งานครับ');
+                    return;
+                }
+                const finalName = displayName || email.split('@')[0];
+                const newRecord = {
+                    uid: 'user-' + btoa(encodeURIComponent(email)).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) + '-' + Date.now(),
+                    email,
+                    password,
+                    displayName: finalName,
+                    photoURL: `https://placehold.co/64x64/FFD9C2/FF7034?text=${encodeURIComponent(finalName.charAt(0).toUpperCase())}`
+                };
+                usersMap[email] = newRecord;
+                saveLocalUsersMap(usersMap);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-70');
+                }
+                loginWithLocalUserRecord(newRecord, true);
+                showToast('สมัครสมาชิกสำเร็จ! 🎉', `ยินดีต้อนรับคุณ ${finalName} กระปุกออมเงินส่วนตัวพร้อมใช้งานแล้วครับ`, 'success');
+            } else {
+                const existing = usersMap[email];
+                if (!existing) {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
+                    showAuthError('ยังไม่มีบัญชีอีเมลนี้ในระบบ กรุณากดแท็บ "สมัครสมาชิกใหม่" ด้านบนเพื่อสร้างบัญชีครับ');
+                    return;
+                }
+                if (existing.password !== password) {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-70');
+                    }
+                    showAuthError('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้งครับ');
+                    return;
+                }
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-70');
+                }
+                loginWithLocalUserRecord(existing, false);
+                showToast('เข้าสู่ระบบสำเร็จ! 🐷', `ยินดีต้อนรับกลับมาครับคุณ ${existing.displayName}`, 'success');
             }
         }
 
         async function handlePasswordReset() {
             hideAuthError();
-            const cloud = window.StepSaveCloud;
-            if (!cloud || !cloud.isReady()) {
-                showAuthError('ระบบรีเซ็ตรหัสผ่านต้องการการเชื่อมต่อคลาวด์ครับ');
-                return;
-            }
-            const email = document.getElementById('auth-email-input').value.trim();
-            if (!email) {
+            const emailInput = document.getElementById('auth-email-input');
+            const email = (emailInput?.value || '').trim().toLowerCase();
+            if (!email || !email.includes('@')) {
                 showAuthError('กรุณากรอกอีเมลของคุณในช่อง "อีเมล" ด้านล่างก่อน แล้วกดปุ่ม "ลืมรหัสผ่าน?" อีกครั้งครับ');
-                document.getElementById('auth-email-input').focus();
+                emailInput?.focus();
                 return;
             }
-            try {
-                await cloud.sendPasswordResetEmail(cloud.getAuth(), email);
-                showToast('ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว ✉️', `กรุณาตรวจสอบกล่องข้อความในอีเมล ${email} ครับ`, 'success');
-            } catch (err) {
-                showAuthError(translateFirebaseAuthError(err));
+
+            const cloud = window.StepSaveCloud;
+            if (cloud && cloud.isReady()) {
+                try {
+                    await cloud.sendPasswordResetEmail(cloud.getAuth(), email);
+                    showToast('ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว ✉️', `กรุณาตรวจสอบกล่องข้อความในอีเมล ${email} ครับ`, 'success');
+                    return;
+                } catch (err) {}
             }
+
+            const usersMap = getLocalUsersMap();
+            if (!usersMap[email]) {
+                showAuthError('ไม่พบบัญชีอีเมลนี้ในระบบ กรุณากดแท็บ "สมัครสมาชิกใหม่" เพื่อสร้างบัญชีใหม่ได้เลยครับ');
+                return;
+            }
+            usersMap[email].password = '123456';
+            saveLocalUsersMap(usersMap);
+            showToast('รีเซ็ตรหัสผ่านชั่วคราวเรียบร้อย 🔑', `ตั้งรหัสผ่านใหม่ของ ${email} เป็น "123456" แล้ว สามารถใช้เข้าสู่ระบบได้ทันทีครับ`, 'success');
         }
 
         function enterGuestMode() {
@@ -1293,16 +1610,16 @@
 
         async function handleLogout() {
             if (unsubscribeUserDoc) {
-                unsubscribeUserDoc();
+                try { unsubscribeUserDoc(); } catch (e) {}
                 unsubscribeUserDoc = null;
             }
+            try { localStorage.removeItem(LOCAL_SESSION_KEY); } catch (e) {}
+
             const cloud = window.StepSaveCloud;
-            if (!isGuestMode && cloud && cloud.isReady() && cloud.getAuth().currentUser) {
+            if (!isGuestMode && !currentUser?.isLocalAccount && cloud && cloud.isReady() && cloud.getAuth().currentUser) {
                 try {
                     await cloud.signOut(cloud.getAuth());
-                } catch (e) {
-                    console.error('Sign out error:', e);
-                }
+                } catch (e) {}
             }
             isGuestMode = false;
             currentUser = null;
@@ -1311,226 +1628,110 @@
             showToast('ออกจากระบบเรียบร้อย 👋', 'ขอบคุณที่แวะมาออมเงินกับ StepSave นะครับ', 'brand');
         }
 
-        function showAuthScreenUI() {
-            document.getElementById('auth-screen').classList.remove('hidden');
-            document.getElementById('main-app-screen').classList.add('hidden');
-        }
-
-        function showMainAppUI() {
-            document.getElementById('auth-screen').classList.add('hidden');
-            document.getElementById('main-app-screen').classList.remove('hidden');
-
-            // อัปเดตข้อมูลโปรไฟล์บน Header
-            const nameEl = document.getElementById('user-display-name');
-            const emailEl = document.getElementById('user-display-email');
-            const avatarEl = document.getElementById('user-avatar-img');
-            const syncBadge = document.getElementById('sync-status-badge');
-            const logoutText = document.getElementById('btn-logout-text');
-
-            if (isGuestMode || !currentUser || currentUser.isGuest) {
-                nameEl.textContent = 'โหมดทดลองใช้งาน';
-                emailEl.textContent = 'เก็บข้อมูลในเครื่องนี้';
-                avatarEl.src = 'https://placehold.co/64x64/FEF7E2/FF7034?text=🧸';
-                syncBadge.textContent = '🧸 โหมดทดลองในเครื่อง';
-                syncBadge.className = 'text-xs font-semibold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full';
-                logoutText.textContent = 'เข้าสู่ระบบ / สมัคร';
-            } else {
-                const displayName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'สมาชิก StepSave');
-                nameEl.textContent = displayName;
-                emailEl.textContent = currentUser.email || 'บัญชีส่วนตัว';
-                avatarEl.src = currentUser.photoURL || `https://placehold.co/64x64/FFD9C2/FF7034?text=${encodeURIComponent(displayName.charAt(0).toUpperCase())}`;
-                syncBadge.textContent = '☁️ ซิงก์บัญชีแล้ว';
-                syncBadge.className = 'text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full';
-                logoutText.textContent = 'ออกจากระบบ';
+        function resolveGuestMerge(mergeGuest) {
+            const modal = document.getElementById('guest-merge-modal');
+            if (modal) modal.classList.add('hidden');
+            if (mergeGuest && pendingGuestDataForMerge) {
+                const base = pendingCloudDataForMerge || getFreshZeroState();
+                const guest = pendingGuestDataForMerge;
+                const mergedGoals = base.goals.map(g => {
+                    const match = guest.goals.find(gg => gg.id === g.id);
+                    return match ? { ...g, current: roundMoney(g.current + match.current) } : g;
+                });
+                state = sanitizeState({
+                    ...base,
+                    mainBalance: roundMoney(base.mainBalance + guest.mainBalance),
+                    sweepWallet: roundMoney(base.sweepWallet + guest.sweepWallet),
+                    goals: mergedGoals,
+                    activities: [...(guest.activities || []), ...(base.activities || [])].slice(0, 100)
+                });
+                saveState();
+                showToast('ซิงก์ข้อมูลสำเร็จ! ✨', 'นำยอดเงินและประวัติจากเครื่องมารวมในบัญชีเรียบร้อยแล้วครับ', 'success');
             }
-
+            try { localStorage.removeItem(GUEST_STORAGE_KEY); } catch (e) {}
+            pendingGuestDataForMerge = null;
+            pendingCloudDataForMerge = null;
             renderAll();
         }
 
-        // เชื่อมต่อระบบซิงก์ Firestore แยกตามผู้ใช้แต่ละคน
         async function setupUserCloudSync(user) {
-            const cloud = window.StepSaveCloud;
-            if (!cloud || !cloud.isReady() || !user?.uid) return;
-
             if (unsubscribeUserDoc) {
-                unsubscribeUserDoc();
+                try { unsubscribeUserDoc(); } catch (e) {}
                 unsubscribeUserDoc = null;
             }
-
+            const cloud = window.StepSaveCloud;
             const db = cloud.getDb();
-            const appId = cloud.getAppId();
-            const userDocRef = cloud.doc(db, 'artifacts', appId, 'users', user.uid, 'wallet', 'profileData');
+            const userRef = cloud.doc(db, 'artifacts', cloud.getAppId(), 'users', user.uid, 'stepsave', 'profile');
+
+            let cloudData = null;
+            try {
+                const snap = await cloud.getDoc(userRef);
+                if (snap.exists()) {
+                    cloudData = sanitizeState(snap.data());
+                }
+            } catch (err) {
+                console.warn('Cloud getDoc fallback to local account data:', err);
+                const localFallback = loadLocalAccountData(user.uid);
+                if (localFallback) {
+                    state = localFallback;
+                    showMainAppUI();
+                    return;
+                }
+            }
+
+            const localGuest = loadGuestStateFromLocal();
+            const hasGuest = hasMeaningfulGuestData(localGuest);
+
+            if (cloudData) {
+                state = cloudData;
+                saveLocalAccountData(user.uid, state);
+                showMainAppUI();
+                if (hasGuest) {
+                    pendingGuestDataForMerge = localGuest;
+                    pendingCloudDataForMerge = cloudData;
+                    document.getElementById('guest-merge-modal')?.classList.remove('hidden');
+                }
+            } else {
+                state = hasGuest ? localGuest : getFreshZeroState();
+                if (hasGuest) {
+                    try { localStorage.removeItem(GUEST_STORAGE_KEY); } catch (e) {}
+                }
+                saveLocalAccountData(user.uid, state);
+                showMainAppUI();
+                try {
+                    await cloud.setDoc(userRef, {
+                        ...state,
+                        email: user.email || '',
+                        displayName: user.displayName || '',
+                        updatedAt: Date.now()
+                    }, { merge: true });
+                } catch (e) {}
+            }
 
             try {
-                const snap = await cloud.getDoc(userDocRef);
-                const localGuest = loadGuestStateFromLocal();
-                const hasGuestData = hasMeaningfulGuestData(localGuest);
-
-                if (snap.exists()) {
-                    const cloudState = sanitizeState(snap.data());
-                    if (hasGuestData) {
-                        // ถามผู้ใช้ว่าต้องการนำข้อมูล Guest มาซิงก์ทับหรือใช้ข้อมูลคลาวด์เดิม
-                        pendingGuestDataForMerge = localGuest;
-                        pendingCloudDataForMerge = cloudState;
-                        state = cloudState;
-                        showMainAppUI();
-                        document.getElementById('guest-merge-modal').classList.remove('hidden');
-                    } else {
-                        state = cloudState;
-                        showMainAppUI();
-                    }
-                } else {
-                    // ผู้ใช้ใหม่เอี่ยม: หากมีข้อมูล Guest ค้างอยู่ให้นำมาซิงก์เข้าบัญชีใหม่ทันที มิฉะนั้นเริ่มที่ 0 บาท
-                    state = hasGuestData ? localGuest : getFreshZeroState();
-                    if (hasGuestData) {
-                        localStorage.removeItem(GUEST_STORAGE_KEY);
-                        showToast('ซิงก์ข้อมูลเข้าบัญชีใหม่แล้ว! ✨', 'ย้ายข้อมูลที่คุณทดลองออมไว้เข้ามาในบัญชีนี้เรียบร้อย', 'success');
-                    }
-                    await cloud.setDoc(userDocRef, {
-                        ...state,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        email: user.email || '',
-                        displayName: user.displayName || ''
-                    });
-                    showMainAppUI();
-                }
-
-                // เปิด Listener ฟังการอัปเดตแบบ Real-time ข้ามอุปกรณ์
-                unsubscribeUserDoc = cloud.onSnapshot(userDocRef, (docSnap) => {
-                    if (!docSnap.exists()) return;
+                unsubscribeUserDoc = cloud.onSnapshot(userRef, (docSnap) => {
+                    if (!docSnap.exists() || isGuestMode || !currentUser || currentUser.uid !== user.uid) return;
+                    if (docSnap.metadata?.hasPendingWrites) return;
                     isApplyingRemoteSnapshot = true;
                     state = sanitizeState(docSnap.data());
+                    saveLocalAccountData(user.uid, state);
                     renderAll();
                     isApplyingRemoteSnapshot = false;
                 }, (err) => {
-                    console.error('Firestore snapshot error:', err);
+                    console.warn('onSnapshot listener error:', err);
                 });
-            } catch (err) {
-                console.error('Error loading user cloud profile:', err);
-                state = getFreshZeroState();
-                showMainAppUI();
-                showToast('โหลดข้อมูลคลาวด์ไม่สำเร็จ', 'ระบบเปิดหน้าจอเริ่มต้นที่ 0 บาทให้ใช้งานชั่วคราวครับ', 'warning');
-            }
+            } catch (e) {}
         }
 
-        async function resolveGuestMerge(useGuestData) {
-            document.getElementById('guest-merge-modal').classList.add('hidden');
-            if (useGuestData && pendingGuestDataForMerge) {
-                state = pendingGuestDataForMerge;
-                localStorage.removeItem(GUEST_STORAGE_KEY);
-                saveState();
-                renderAll();
-                showToast('นำข้อมูลในเครื่องมาซิงก์แล้ว! ☁️', 'บันทึกข้อมูลการออมลงบัญชีส่วนตัวของคุณเรียบร้อยครับ', 'success');
-            } else {
-                localStorage.removeItem(GUEST_STORAGE_KEY);
-                if (pendingCloudDataForMerge) {
-                    state = pendingCloudDataForMerge;
-                    renderAll();
-                }
-                showToast('โหลดข้อมูลจากบัญชีคลาวด์แล้ว ✨', 'แสดงข้อมูลการออมล่าสุดในบัญชีของคุณครับ', 'brand');
-            }
-            pendingGuestDataForMerge = null;
-            pendingCloudDataForMerge = null;
-        }
-
-        // เริ่มต้นตรวจสอบสถานะการล็อคอินเมื่อ Firebase พร้อม
-        function initAuthListener() {
-            const cloud = window.StepSaveCloud;
-            if (!cloud || !cloud.isReady()) {
-                showAuthScreenUI();
-                return;
-            }
-
-            const auth = cloud.getAuth();
-            cloud.onAuthStateChanged(auth, async (user) => {
-                if (user && !user.isAnonymous) {
-                    isGuestMode = false;
-                    currentUser = user;
-                    await setupUserCloudSync(user);
-                } else {
-                    if (!isGuestMode) {
-                        currentUser = null;
-                        showAuthScreenUI();
-                    }
-                }
-            });
-        }
-
-        window.addEventListener('stepsave-firebase-ready', initAuthListener);
-
-        // ==========================================
-        // 2. ฟังก์ชันช่วยเหลือด้านการเงิน การแจ้งเตือน และเมนูนำทาง
-        // ==========================================
-        function formatCurrency(val) {
-            const num = roundMoney(val);
-            return '฿' + num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-
-        function formatShortCurrency(val) {
-            const num = roundMoney(val);
-            return '฿' + num.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-        }
-
-        function showToast(title, message, type = 'brand') {
-            const container = document.getElementById('toast-container');
-            if (!container) return;
-            const colors = {
-                success: 'bg-mint-50 border-mint-500 text-slate-800',
-                warning: 'bg-cream-100 border-amber-400 text-slate-800',
-                danger: 'bg-rose-50 border-rose-500 text-slate-800',
-                brand: 'bg-peach-50 border-peach-500 text-slate-800'
-            };
-            const icons = {
-                success: '🎉',
-                warning: '💡',
-                danger: '⚠️',
-                brand: '🐷'
-            };
-            const toast = document.createElement('div');
-            toast.className = `pointer-events-auto p-4 rounded-2xl border-2 shadow-lg flex items-start gap-3 transition-all duration-300 ${colors[type] || colors.brand}`;
-            toast.innerHTML = `
-                <span class="text-2xl shrink-0">${icons[type] || '🐷'}</span>
-                <div class="min-w-0 flex-1">
-                    <div class="font-cute font-bold text-sm text-slate-800">${escapeHtml(title)}</div>
-                    <div class="text-xs text-slate-600 mt-0.5 leading-relaxed">${escapeHtml(message)}</div>
-                </div>
-            `;
-            container.appendChild(toast);
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateY(8px)';
-                setTimeout(() => toast.remove(), 300);
-            }, 3800);
-        }
-
-        function addActivity(title, amount, type, emoji = '🪙') {
-            const now = new Date();
-            const timestamp = now.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' }) + ' ' +
-                              now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-            state.activities.unshift({
-                id: 'act-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-                title,
-                amount: roundMoney(amount),
-                type,
-                emoji,
-                timestamp
-            });
-            if (state.activities.length > 100) {
-                state.activities = state.activities.slice(0, 100);
-            }
-        }
-
-        function switchTab(tab) {
-            activeTab = tab;
+        function switchTab(tabName) {
             const tabs = ['all', 'save', 'goals', 'sim'];
             tabs.forEach(t => {
-                const btn = document.getElementById(`tab-${t}`);
-                if (!btn) return;
-                if (t === tab) {
-                    btn.className = 'btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-bold bg-peach-500 text-white shadow-sm flex items-center gap-1.5';
+                const el = document.getElementById(`tab-${t}`);
+                if (!el) return;
+                if (t === tabName) {
+                    el.className = 'btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-bold bg-peach-500 text-white shadow-sm flex items-center gap-1.5';
                 } else {
-                    btn.className = 'btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-semibold bg-peach-50 text-slate-700 hover:bg-peach-100 flex items-center gap-1.5';
+                    el.className = 'btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-semibold bg-peach-50 text-slate-700 hover:bg-peach-100 flex items-center gap-1.5';
                 }
             });
 
@@ -1539,827 +1740,577 @@
             const secGoals = document.getElementById('section-goals');
             const secSim = document.getElementById('section-sim');
 
-            if (tab === 'all') {
-                secOverview.classList.remove('hidden');
-                secSave.classList.remove('hidden');
-                secGoals.classList.remove('hidden');
-                secSim.classList.remove('hidden');
-                secSave.className = 'lg:col-span-5 space-y-6';
-                secGoals.className = 'lg:col-span-7 cute-card p-6 flex flex-col justify-between';
-            } else if (tab === 'save') {
-                secOverview.classList.add('hidden');
-                secSave.classList.remove('hidden');
-                secGoals.classList.add('hidden');
-                secSim.classList.add('hidden');
-                secSave.className = 'lg:col-span-12 space-y-6';
-            } else if (tab === 'goals') {
-                secOverview.classList.add('hidden');
-                secSave.classList.add('hidden');
-                secGoals.classList.remove('hidden');
-                secSim.classList.add('hidden');
-                secGoals.className = 'lg:col-span-12 cute-card p-6 flex flex-col justify-between';
-            } else if (tab === 'sim') {
-                secOverview.classList.add('hidden');
-                secSave.classList.add('hidden');
-                secGoals.classList.add('hidden');
-                secSim.classList.remove('hidden');
+            if (tabName === 'all') {
+                secOverview?.classList.remove('hidden');
+                secSave?.classList.remove('hidden');
+                secGoals?.classList.remove('hidden');
+                secSim?.classList.remove('hidden');
+            } else if (tabName === 'save') {
+                secOverview?.classList.remove('hidden');
+                secSave?.classList.remove('hidden');
+                secGoals?.classList.add('hidden');
+                secSim?.classList.add('hidden');
+            } else if (tabName === 'goals') {
+                secOverview?.classList.remove('hidden');
+                secSave?.classList.add('hidden');
+                secGoals?.classList.remove('hidden');
+                secSim?.classList.add('hidden');
+            } else if (tabName === 'sim') {
+                secOverview?.classList.add('hidden');
+                secSave?.classList.add('hidden');
+                secGoals?.classList.add('hidden');
+                secSim?.classList.remove('hidden');
                 updateSimulator();
             }
         }
 
-        // ==========================================
-        // 3. ระบบ Smart Cashflow Throttling และบันทึกรายรับ-รายจ่าย
-        // ==========================================
-        function getThrottleMultiplier() {
-            if (state.throttleMode === 'shield') return 0.5;
-            if (state.throttleMode === 'boost') return 1.5;
-            return 1.0;
-        }
+        function getActiveThrottleInfo() {
+            const bal = roundMoney(state.mainBalance);
+            const lowT = roundMoney(state.settings.lowBalanceThreshold);
+            const highT = roundMoney(state.settings.highBalanceThreshold);
 
-        function evaluateAutoThrottling(notify = true) {
-            if (!state.autoThrottle) return;
-            const prev = state.throttleMode;
-            if (state.mainBalance < state.lowLiquidityThreshold) {
-                state.throttleMode = 'shield';
-            } else if (state.mainBalance > state.highLiquidityThreshold) {
-                state.throttleMode = 'boost';
-            } else {
-                state.throttleMode = 'normal';
+            if (state.autoThrottle) {
+                if (bal < lowT) {
+                    return { mode: 'shield', multiplier: 0.5, label: '🐢 โหมดประคองตัว (ออมเบาๆ 0.5x)' };
+                }
+                if (bal >= highT) {
+                    return { mode: 'boost', multiplier: 1.5, label: '🚀 โหมดเร่งออมเต็มสปีด (1.5x)' };
+                }
+                return { mode: 'normal', multiplier: 1.0, label: '🚶 โหมดออมปกติ (1.0x)' };
             }
-            if (notify && prev !== state.throttleMode) {
-                const modeNames = {
-                    shield: '🐢 โหมดประคองตัว (ออมเบาๆ 0.5x)',
-                    normal: '🚶 โหมดออมปกติ (1.0x)',
-                    boost: '🚀 โหมดเร่งออมเต็มสปีด (1.5x)'
-                };
-                showToast('ปรับจังหวะออมอัตโนมัติ', `เปลี่ยนเป็น ${modeNames[state.throttleMode]} ตามสภาพคล่องกระเป๋าหลักครับ`, 'brand');
+
+            if (state.manualMode === 'boost') {
+                return { mode: 'boost', multiplier: 1.5, label: '🚀 โหมดเร่งออม (กำหนดเอง 1.5x)' };
             }
+            if (state.manualMode === 'normal') {
+                return { mode: 'normal', multiplier: 1.0, label: '🚶 โหมดออมปกติ (กำหนดเอง 1.0x)' };
+            }
+            return { mode: 'shield', multiplier: 0.5, label: '🐢 โหมดประคองตัว (กำหนดเอง 0.5x)' };
         }
 
         function toggleAutoThrottle() {
             const cb = document.getElementById('auto-throttle-toggle');
-            state.autoThrottle = cb ? cb.checked : true;
-            if (state.autoThrottle) {
-                evaluateAutoThrottling(true);
-            }
+            state.autoThrottle = Boolean(cb?.checked);
             saveState();
             renderFriendlyAdvisor();
-            renderHabitRules();
-            previewRoundUp();
+            showToast(
+                state.autoThrottle ? 'เปิดระบบปรับจังหวะออมอัตโนมัติแล้ว' : 'เปลี่ยนเป็นกำหนดโหมดเองแล้ว',
+                state.autoThrottle ? 'ระบบจะช่วยดูยอดเงินในกระเป๋าหลักและปรับยอดออมให้อัตโนมัติครับ' : 'คุณสามารถกดเลือกโหมด เบาๆ / ปกติ / เร่งออม ได้เองครับ',
+                'brand'
+            );
         }
 
         function setThrottleMode(mode) {
-            state.throttleMode = mode;
             state.autoThrottle = false;
+            state.manualMode = mode;
             const cb = document.getElementById('auto-throttle-toggle');
             if (cb) cb.checked = false;
             saveState();
             renderFriendlyAdvisor();
-            renderHabitRules();
-            previewRoundUp();
         }
 
         function renderFriendlyAdvisor() {
-            const mascotEl = document.getElementById('advisor-mascot');
-            const pillEl = document.getElementById('advisor-mode-pill');
-            const headEl = document.getElementById('advisor-headline');
-            const msgEl = document.getElementById('advisor-message');
-            const cb = document.getElementById('auto-throttle-toggle');
-            if (cb) cb.checked = state.autoThrottle;
+            const info = getActiveThrottleInfo();
+            const toggle = document.getElementById('auto-throttle-toggle');
+            if (toggle) toggle.checked = Boolean(state.autoThrottle);
+
+            const mascot = document.getElementById('advisor-mascot');
+            const pill = document.getElementById('advisor-mode-pill');
+            const headline = document.getElementById('advisor-headline');
+            const msg = document.getElementById('advisor-message');
 
             const btnShield = document.getElementById('btn-mode-shield');
             const btnNormal = document.getElementById('btn-mode-normal');
             const btnBoost = document.getElementById('btn-mode-boost');
 
-            const inactiveCls = 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600';
-            btnShield.className = state.throttleMode === 'shield' ? 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 text-slate-900 shadow-2xs' : inactiveCls;
-            btnNormal.className = state.throttleMode === 'normal' ? 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-peach-500 text-white shadow-2xs' : inactiveCls;
-            btnBoost.className = state.throttleMode === 'boost' ? 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-mint-500 text-white shadow-2xs' : inactiveCls;
+            [btnShield, btnNormal, btnBoost].forEach(b => {
+                if (b) b.className = 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600';
+            });
+            if (info.mode === 'shield' && btnShield) {
+                btnShield.className = 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 text-slate-900';
+            } else if (info.mode === 'normal' && btnNormal) {
+                btnNormal.className = 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-mint-500 text-white';
+            } else if (info.mode === 'boost' && btnBoost) {
+                btnBoost.className = 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-skysoft-500 text-white';
+            }
 
-            if (state.throttleMode === 'shield') {
-                mascotEl.textContent = '🐢';
-                pillEl.textContent = 'โหมดประคองตัว (ออมเบาๆ ครึ่งเดียว 0.5x)';
-                pillEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 mb-1';
-                headEl.textContent = state.mainBalance === 0 ? 'เริ่มต้นใหม่ ค่อยๆ เก็บทีละนิดนะ!' : 'ช่วงนี้เงินในกระเป๋าน้อย ระบบช่วยผ่อนแรงออมให้ครับ';
-                msgEl.textContent = `เงินคงเหลือต่ำกว่า ${formatShortCurrency(state.lowLiquidityThreshold)} ระบบจึงลดยอดออมอัตโนมัติเหลือ 0.5 เท่า เพื่อไม่ให้คุณตึงมือ`;
-            } else if (state.throttleMode === 'boost') {
-                mascotEl.textContent = '🚀';
-                pillEl.textContent = 'โหมดเร่งออมเต็มสปีด (ออมเพิ่ม 1.5x)';
-                pillEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-mint-100 text-mint-700 mb-1';
-                headEl.textContent = 'ว้าว! กระเป๋าหลักคล่องตัวมาก เร่งสปีดถึงเป้าหมายกัน!';
-                msgEl.textContent = `เงินคงเหลือเกิน ${formatShortCurrency(state.highLiquidityThreshold)} ระบบช่วยคูณยอดออมให้อัตโนมัติ 1.5 เท่า ให้ฝันเป็นจริงไวขึ้น`;
+            if (pill) pill.textContent = info.label;
+
+            if (info.mode === 'shield') {
+                if (mascot) mascot.textContent = '🐢';
+                if (headline) headline.textContent = state.mainBalance === 0 ? 'เริ่มต้นจาก ฿0.00 ได้เลย ค่อยๆ สะสมทีละนิดนะ!' : 'ช่วงนี้ประคองกระเป๋าก่อน ค่อยๆ เก็บเบาๆ';
+                if (msg) msg.textContent = `เงินในกระเป๋าหลักต่ำกว่าเกณฑ์ (${formatWholeCurrency(state.settings.lowBalanceThreshold)}) ระบบจึงลดยอดหักออมอัตโนมัติเหลือครึ่งเดียว (0.5x) จะได้ไม่ตึงมือครับ`;
+            } else if (info.mode === 'boost') {
+                if (mascot) mascot.textContent = '🚀';
+                if (headline) headline.textContent = 'กระเป๋าคล่องตัวมาก! โอกาสดีในการเร่งเก็บเงิน';
+                if (msg) msg.textContent = `เงินในกระเป๋าหลักสูงกว่าเกณฑ์ (${formatWholeCurrency(state.settings.highBalanceThreshold)}) ระบบเพิ่มพลังออมให้อัตโนมัติเป็น 1.5 เท่าครับ`;
             } else {
-                mascotEl.textContent = '🐷';
-                pillEl.textContent = 'โหมดออมจังหวะปกติ (1.0x)';
-                pillEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-peach-100 text-peach-700 mb-1';
-                headEl.textContent = 'สภาพคล่องกำลังดี ออมตามแผนได้สบายๆ เลย!';
-                msgEl.textContent = 'เก็บเล็กผสมน้อยตามจังหวะชีวิตที่สมดุล ไม่ตึงและไม่หย่อนจนเกินไปครับ';
+                if (mascot) mascot.textContent = '🚶';
+                if (headline) headline.textContent = 'จังหวะการเงินสมดุลดี ออมต่อเนื่องได้สบายๆ';
+                if (msg) msg.textContent = 'ยอดเงินในกระเป๋าหลักอยู่ในระดับปกติ ระบบหยอดกระปุกออมย่อยตามยอดจริง (1.0x) ครับ';
             }
         }
 
         function selectCashflowType(type) {
-            document.getElementById('cf-type-input').value = type;
-            const btnIn = document.getElementById('btn-cf-income');
-            const btnEx = document.getElementById('btn-cf-expense');
+            const hidden = document.getElementById('cf-type-input');
+            const btnInc = document.getElementById('btn-cf-income');
+            const btnExp = document.getElementById('btn-cf-expense');
             const btnSub = document.getElementById('btn-cf-submit');
 
+            if (hidden) hidden.value = type;
             if (type === 'income') {
-                btnIn.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-mint-500 text-white shadow-xs flex items-center justify-center gap-1.5';
-                btnEx.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5';
-                btnSub.className = 'btn-bounce w-full h-full py-3 px-4 bg-mint-500 hover:bg-mint-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5';
+                if (btnInc) btnInc.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-mint-500 text-white shadow-xs flex items-center justify-center gap-1.5';
+                if (btnExp) btnExp.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5';
+                if (btnSub) btnSub.className = 'btn-bounce w-full h-full py-3 px-4 bg-mint-500 hover:bg-mint-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5';
             } else {
-                btnEx.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-rose-500 text-white shadow-xs flex items-center justify-center gap-1.5';
-                btnIn.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5';
-                btnSub.className = 'btn-bounce w-full h-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5';
+                if (btnExp) btnExp.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-rose-500 text-white shadow-xs flex items-center justify-center gap-1.5';
+                if (btnInc) btnInc.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5';
+                if (btnSub) btnSub.className = 'btn-bounce w-full h-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5';
             }
         }
 
         function quickFillCashflow(amount, type, note) {
             selectCashflowType(type);
-            document.getElementById('cf-amount-input').value = amount;
-            document.getElementById('cf-note-input').value = note;
-            handleCashflowSubmit(new Event('submit'));
+            const amtEl = document.getElementById('cf-amount-input');
+            const noteEl = document.getElementById('cf-note-input');
+            if (amtEl) amtEl.value = amount;
+            if (noteEl) noteEl.value = note;
         }
 
         function handleCashflowSubmit(e) {
-            if (e && e.preventDefault) e.preventDefault();
-            const type = document.getElementById('cf-type-input').value;
-            const amount = roundMoney(document.getElementById('cf-amount-input').value);
-            const note = document.getElementById('cf-note-input').value.trim();
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const type = document.getElementById('cf-type-input')?.value || 'income';
+            const amount = roundMoney(document.getElementById('cf-amount-input')?.value);
+            const note = (document.getElementById('cf-note-input')?.value || '').trim() || (type === 'income' ? 'รายรับเข้า' : 'รายจ่ายออก');
 
-            if (!Number.isFinite(amount) || amount <= 0 || !note) {
-                showToast('กรุณากรอกข้อมูลให้ครบ', 'ระบุจำนวนเงินมากกว่า 0 บาทและรายละเอียดรายการครับ', 'warning');
+            if (amount <= 0) {
+                showToast('กรุณาใส่จำนวนเงินมากกว่า 0', 'พิมพ์จำนวนเงินที่ต้องการบันทึกก่อนนะครับ', 'warn');
                 return;
             }
 
             if (type === 'income') {
                 state.mainBalance = roundMoney(state.mainBalance + amount);
-                addActivity(note, amount, 'income', '💵');
-                showToast('บันทึกรายรับแล้ว!', `เพิ่มเงิน ${formatCurrency(amount)} เข้ากระเป๋าหลักเรียบร้อย`, 'success');
+                addActivity(`รับเงิน: ${note}`, amount, 'income');
+                showToast('บันทึกรายรับแล้ว! 💚', `เพิ่มเงินเข้ากระเป๋าหลัก ${formatCurrency(amount)}`, 'success');
             } else {
-                if (state.mainBalance < amount) {
-                    showToast('เงินในกระเป๋าหลักไม่พอจ่ายครับ', `กระเป๋าหลักมีเงินอยู่ ${formatCurrency(state.mainBalance)}`, 'danger');
+                if (amount > state.mainBalance) {
+                    showToast('เงินในกระเป๋าหลักไม่พอ', `มีเงินคงเหลือ ${formatCurrency(state.mainBalance)} ลองบันทึกรายรับเพิ่มก่อนนะครับ`, 'error');
                     return;
                 }
-                state.mainBalance = Math.max(0, roundMoney(state.mainBalance - amount));
-                addActivity(note, -amount, 'expense', '🛍️');
-                showToast('บันทึกรายจ่ายแล้ว', `หักเงิน ${formatCurrency(amount)} (${note}) ออกจากกระเป๋าหลัก`, 'warning');
+                state.mainBalance = roundMoney(state.mainBalance - amount);
+                addActivity(`จ่ายออก: ${note}`, -amount, 'expense');
+                showToast('บันทึกรายจ่ายแล้ว', `หักออกจากกระเป๋าหลัก ${formatCurrency(amount)}`, 'warn');
             }
 
-            document.getElementById('cf-amount-input').value = '';
-            document.getElementById('cf-note-input').value = '';
-            evaluateAutoThrottling(true);
+            const amtEl = document.getElementById('cf-amount-input');
+            const noteEl = document.getElementById('cf-note-input');
+            if (amtEl) amtEl.value = '';
+            if (noteEl) noteEl.value = '';
+
             saveState();
             renderAll();
         }
 
-        // ==========================================
-        // 4. ระบบหยอดกระปุกออมย่อย (Round-up & Habit Rules)
-        // ==========================================
-        function calculateRoundUpDiff(spendAmount, unit) {
-            if (!Number.isFinite(spendAmount) || spendAmount <= 0) return 0;
-            const spendSatang = Math.round(spendAmount * 100);
-            const unitSatang = Math.round(unit * 100);
-            const rem = spendSatang % unitSatang;
-            if (rem === 0) return 0;
-            return roundMoney((unitSatang - rem) / 100);
+        function calculateRoundUpCents(spendAmount, unit) {
+            const spendCents = Math.round(Number(spendAmount) * 100);
+            const unitCents = Math.round(Number(unit) * 100);
+            if (spendCents <= 0 || unitCents <= 0) return { diffCents: 0, roundedCents: spendCents };
+            const rem = spendCents % unitCents;
+            if (rem === 0) {
+                return { diffCents: 0, roundedCents: spendCents };
+            }
+            const diffCents = unitCents - rem;
+            return { diffCents, roundedCents: spendCents + diffCents };
         }
 
         function previewRoundUp() {
-            const spendInput = document.getElementById('ru-spend-input');
-            const unitSelect = document.getElementById('ru-unit-select');
+            const spendVal = parseFloat(document.getElementById('ru-spend-input')?.value || '0');
+            const unitVal = parseInt(document.getElementById('ru-unit-select')?.value || '10', 10);
             const previewEl = document.getElementById('ru-preview-text');
             const submitBtn = document.getElementById('btn-ru-submit');
-            if (!spendInput || !unitSelect || !previewEl) return;
 
-            const spend = roundMoney(spendInput.value);
-            const unit = Number(unitSelect.value) || 10;
-
-            if (!spend || spend <= 0) {
-                previewEl.textContent = '💡 ลองกรอกยอดซื้อด้านบน ระบบจะคำนวณเงินทอนให้อัตโนมัติ';
+            if (!Number.isFinite(spendVal) || spendVal <= 0) {
+                if (previewEl) previewEl.textContent = '💡 ลองกรอกยอดซื้อด้านบน ระบบจะคำนวณเงินทอนให้อัตโนมัติ';
                 if (submitBtn) submitBtn.disabled = false;
                 return;
             }
 
-            const baseDiff = calculateRoundUpDiff(spend, unit);
-            if (baseDiff === 0) {
-                previewEl.textContent = `✨ ยอดซื้อ ${formatCurrency(spend)} ลงท้ายหลัก ${unit} บาทพอดีเป๊ะ ไม่มีเศษเงินทอนให้ปัดครับ`;
+            const { diffCents, roundedCents } = calculateRoundUpCents(spendVal, unitVal);
+            const throttle = getActiveThrottleInfo();
+            const adjustedDiff = roundMoney((diffCents / 100) * throttle.multiplier);
+
+            if (diffCents === 0) {
+                if (previewEl) previewEl.textContent = `ยอด ${formatCurrency(spendVal)} ลงตัวกับหลัก ${unitVal} บาทพอดี ไม่มีเศษเงินทอนครับ`;
                 if (submitBtn) submitBtn.disabled = true;
+            } else {
+                if (previewEl) {
+                    previewEl.textContent = `ปัดเต็ม ${formatCurrency(roundedCents / 100)} ➔ เศษทอน ${formatCurrency(diffCents / 100)} (จังหวะ ${throttle.multiplier}x จะหยอดกระปุก ${formatCurrency(adjustedDiff)})`;
+                }
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        }
+
+        function applyMicroSavingToSweep(baseAmount, label) {
+            const throttle = getActiveThrottleInfo();
+            const finalSave = roundMoney(baseAmount * throttle.multiplier);
+            if (finalSave <= 0) {
+                showToast('ยอดออมน้อยเกินไป', 'ลองเลือกยอดที่มากขึ้นนะครับ', 'warn');
+                return;
+            }
+            if (state.mainBalance < finalSave) {
+                showToast('เงินในกระเป๋าหลักไม่พอหยอดกระปุก', `ต้องการ ${formatCurrency(finalSave)} แต่มีเงินในกระเป๋าหลัก ${formatCurrency(state.mainBalance)}`, 'warn');
                 return;
             }
 
-            if (submitBtn) submitBtn.disabled = false;
-            const mult = getThrottleMultiplier();
-            const actualSave = roundMoney(baseDiff * mult);
-            previewEl.textContent = `🪙 เงินทอนปัดเศษ ${formatCurrency(baseDiff)} × โหมดปัจจุบัน (${mult}x) = จะออมเข้ากระปุก ${formatCurrency(actualSave)}`;
+            state.mainBalance = roundMoney(state.mainBalance - finalSave);
+            state.sweepWallet = roundMoney(state.sweepWallet + finalSave);
+            addActivity(`${label} (${throttle.multiplier}x)`, finalSave, 'save');
+
+            if (state.autoSweep && state.sweepWallet >= state.settings.sweepThreshold) {
+                sweepToGoalsNow(true);
+            } else {
+                saveState();
+                renderAll();
+                showToast('หยอดกระปุกพักเงินแล้ว! 🪙', `เพิ่มเข้ากระปุกพักเงิน ${formatCurrency(finalSave)}`, 'success');
+            }
         }
 
         function handleRoundUpSubmit(e) {
-            e.preventDefault();
-            const spend = roundMoney(document.getElementById('ru-spend-input').value);
-            const unit = Number(document.getElementById('ru-unit-select').value) || 10;
-            const deductSpend = document.getElementById('ru-deduct-spend').checked;
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const spendVal = parseFloat(document.getElementById('ru-spend-input')?.value || '0');
+            const unitVal = parseInt(document.getElementById('ru-unit-select')?.value || '10', 10);
+            const deductSpend = Boolean(document.getElementById('ru-deduct-spend')?.checked);
 
-            const baseDiff = calculateRoundUpDiff(spend, unit);
-            if (baseDiff <= 0) {
-                showToast('ไม่มีเศษทอนให้ปัดครับ', 'ยอดซื้อลงท้ายหลักหน่วยที่เลือกพอดีแล้ว', 'warning');
+            if (!Number.isFinite(spendVal) || spendVal <= 0) {
+                showToast('กรุณากรอกยอดซื้อ', 'ใส่ยอดเงินที่ซื้อของก่อนนะครับ', 'warn');
                 return;
             }
 
-            const saveAmount = roundMoney(baseDiff * getThrottleMultiplier());
-            const totalNeeded = roundMoney(saveAmount + (deductSpend ? spend : 0));
-
-            if (state.mainBalance < totalNeeded) {
-                showToast('เงินในกระเป๋าหลักไม่พอครับ', `ต้องใช้เงิน ${formatCurrency(totalNeeded)} แต่ในกระเป๋าหลักมี ${formatCurrency(state.mainBalance)}`, 'danger');
+            const { diffCents } = calculateRoundUpCents(spendVal, unitVal);
+            if (diffCents <= 0) {
+                showToast('ยอดนี้ลงตัวพอดี', 'ไม่มีเศษเงินทอนให้ปัดเพิ่มครับ', 'warn');
                 return;
             }
 
-            state.mainBalance = Math.max(0, roundMoney(state.mainBalance - totalNeeded));
             if (deductSpend) {
-                addActivity(`ค่าซื้อของ (ปัดเศษออม)`, -spend, 'expense', '🛒');
+                const spendRounded = roundMoney(spendVal);
+                if (state.mainBalance < spendRounded) {
+                    showToast('เงินในกระเป๋าหลักไม่พอจ่ายค่าของ', `มีเงินคงเหลือ ${formatCurrency(state.mainBalance)}`, 'error');
+                    return;
+                }
+                state.mainBalance = roundMoney(state.mainBalance - spendRounded);
+                addActivity(`ซื้อของปัดเศษ (${formatCurrency(spendRounded)})`, -spendRounded, 'expense');
             }
-            depositToSweepWallet(saveAmount, `ปัดเศษเงินทอน (จากยอด ${formatShortCurrency(spend)})`, '🧮');
 
-            document.getElementById('ru-spend-input').value = '';
+            applyMicroSavingToSweep(diffCents / 100, `ปัดเศษซื้อของ ${formatWholeCurrency(spendVal)}`);
+            const inp = document.getElementById('ru-spend-input');
+            if (inp) inp.value = '';
             previewRoundUp();
-            evaluateAutoThrottling(false);
-            saveState();
-            renderAll();
         }
 
-        function depositToSweepWallet(amount, title, emoji = '🪙') {
-            const val = roundMoney(amount);
-            if (val <= 0) return;
-            state.sweepWallet = roundMoney(state.sweepWallet + val);
-            addActivity(title, val, 'micro', emoji);
-
-            if (state.autoSweep && state.sweepWallet >= state.sweepThreshold) {
-                sweepToGoalsNow(true);
-            } else {
-                showToast('หยอดกระปุกสำเร็จ! 🪙', `ออมเพิ่ม ${formatCurrency(val)} เข้ากระปุกพักเงินเรียบร้อย`, 'success');
-            }
-        }
-
-        function triggerHabitRule(id) {
-            const rule = state.habitRules.find(r => r.id === id);
+        function triggerHabitRule(habitId) {
+            const rule = state.habitRules.find(h => h.id === habitId);
             if (!rule) return;
-            const saveAmount = roundMoney(rule.amount * getThrottleMultiplier());
-
-            if (state.mainBalance < saveAmount) {
-                showToast('เงินในกระเป๋าหลักไม่พอหยอดกระปุก', `ต้องใช้ ${formatCurrency(saveAmount)} แต่มี ${formatCurrency(state.mainBalance)} ลองบันทึกรายรับก่อนนะครับ`, 'danger');
-                return;
-            }
-
-            state.mainBalance = Math.max(0, roundMoney(state.mainBalance - saveAmount));
-            depositToSweepWallet(saveAmount, `ออมตามพฤติกรรม: ${rule.title}`, rule.emoji || '🌟');
-            evaluateAutoThrottling(false);
-            saveState();
-            renderAll();
+            applyMicroSavingToSweep(rule.amount, `${rule.icon} ${rule.title}`);
         }
 
         function openHabitModal() {
-            document.getElementById('habit-modal').classList.remove('hidden');
+            document.getElementById('habit-modal')?.classList.remove('hidden');
         }
-        function closeHabitModal() {
-            document.getElementById('habit-modal').classList.add('hidden');
-        }
-        function handleAddHabitRule(e) {
-            e.preventDefault();
-            const title = document.getElementById('habit-title-input').value.trim();
-            const amount = roundMoney(document.getElementById('habit-amount-input').value);
-            const emoji = document.getElementById('habit-icon-input').value || '🐷';
 
-            if (!title || !Number.isFinite(amount) || amount <= 0) {
-                showToast('ข้อมูลไม่ถูกต้อง', 'กรุณากรอกชื่อกิจกรรมและจำนวนเงินมากกว่า 0 บาทครับ', 'warning');
+        function closeHabitModal() {
+            document.getElementById('habit-modal')?.classList.add('hidden');
+        }
+
+        function handleAddHabitRule(e) {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const title = (document.getElementById('habit-title-input')?.value || '').trim();
+            const amount = roundMoney(document.getElementById('habit-amount-input')?.value);
+            const icon = document.getElementById('habit-icon-input')?.value || '🐷';
+
+            if (!title || amount <= 0) {
+                showToast('กรอกข้อมูลไม่ครบ', 'กรุณาใส่ชื่อกิจกรรมและจำนวนเงินให้ถูกต้องครับ', 'warn');
                 return;
             }
 
             state.habitRules.push({
                 id: 'h-' + Date.now(),
-                title,
+                title: title.slice(0, 60),
                 amount,
-                emoji
+                icon
             });
+            saveState();
+            closeHabitModal();
             document.getElementById('habit-title-input').value = '';
             document.getElementById('habit-amount-input').value = '';
-            closeHabitModal();
-            saveState();
             renderHabitRules();
-            showToast('สร้างปุ่มออมใหม่แล้ว! 🌟', `กดปุ่ม "${title}" เพื่อหยอดกระปุกได้ทันที`, 'success');
-        }
-
-        function deleteHabitRule(id, e) {
-            if (e) e.stopPropagation();
-            state.habitRules = state.habitRules.filter(r => r.id !== id);
-            saveState();
-            renderHabitRules();
-            showToast('ลบปุ่มพฤติกรรมแล้ว', 'นำปุ่มออกเรียบร้อยครับ', 'brand');
-        }
-
-        function renderHabitRules() {
-            const container = document.getElementById('habit-rules-container');
-            if (!container) return;
-            container.innerHTML = '';
-            const mult = getThrottleMultiplier();
-
-            state.habitRules.forEach(rule => {
-                const actualAmt = roundMoney(rule.amount * mult);
-                const canAfford = state.mainBalance >= actualAmt;
-                const btn = document.createElement('div');
-                btn.onclick = () => triggerHabitRule(rule.id);
-                btn.className = `btn-bounce cursor-pointer p-3 rounded-2xl border-2 transition flex items-center justify-between gap-2 ${
-                    canAfford
-                        ? 'bg-mint-50/70 hover:bg-mint-100 border-mint-200 text-slate-800'
-                        : 'bg-slate-50 border-slate-200 text-slate-500 opacity-85'
-                }`;
-                btn.innerHTML = `
-                    <div class="flex items-center gap-2.5 min-w-0">
-                        <span class="text-2xl shrink-0">${escapeHtml(rule.emoji || '🐷')}</span>
-                        <div class="min-w-0">
-                            <div class="font-bold text-xs sm:text-sm truncate">${escapeHtml(rule.title)}</div>
-                            <div class="text-xs font-bold text-mint-600">+${formatShortCurrency(actualAmt)}</div>
-                        </div>
-                    </div>
-                    <button type="button" onclick="deleteHabitRule('${rule.id}', event)" class="text-slate-400 hover:text-rose-500 px-1.5 py-1 text-xs" title="ลบปุ่มนี้">
-                        ✕
-                    </button>
-                `;
-                container.appendChild(btn);
-            });
+            showToast('สร้างปุ่มออมใหม่แล้ว! 🌟', `กดปุ่ม "${icon} ${title}" ได้ทุกเมื่อเลยครับ`, 'success');
         }
 
         function sweepToGoalsNow(isAuto = false) {
-            const amountToInvest = roundMoney(state.sweepWallet);
-            if (amountToInvest <= 0) return;
-
-            const activeGoals = state.goals.filter(g => Number(g.allocation) > 0);
-            if (activeGoals.length === 0) {
-                showToast('ยังไม่ได้แบ่งสัดส่วนเป้าหมาย', 'กรุณาปรับสัดส่วน % ในกระปุกเป้าหมายอย่างน้อย 1 ใบก่อนส่งเงินครับ', 'warning');
+            const sweepAmount = roundMoney(state.sweepWallet);
+            if (sweepAmount <= 0) {
+                if (!isAuto) showToast('ยังไม่มีเงินในกระปุกพักเงิน', 'ลองหยอดกระปุกออมย่อยก่อนนะครับ', 'warn');
                 return;
             }
-            const targetGoal = state.goals.find(g => g.id === id);
-            if (targetGoal && targetGoal.current > 0) {
-                state.sweepWallet = roundMoney(state.sweepWallet + targetGoal.current);
-                addActivity(`ย้ายเงินคืนจากเป้าหมายที่ลบ (${targetGoal.name})`, targetGoal.current, 'micro', '🔄');
+            if (!Array.isArray(state.goals) || state.goals.length === 0) {
+                if (!isAuto) showToast('ยังไม่มีกระปุกเป้าหมาย', 'สร้างเป้าหมายชีวิตก่อนส่งเงินเข้านะครับ', 'warn');
+                return;
             }
-            state.goals = state.goals.filter(g => g.id !== id);
+
+            const totalAlloc = state.goals.reduce((s, g) => s + (Number(g.allocation) || 0), 0);
+            const sweepCents = Math.round(sweepAmount * 100);
+            let distributedCents = 0;
+
+            state.goals.forEach((g, idx) => {
+                let shareCents = 0;
+                if (idx === state.goals.length - 1) {
+                    shareCents = sweepCents - distributedCents;
+                } else if (totalAlloc > 0) {
+                    shareCents = Math.round((sweepCents * (Number(g.allocation) || 0)) / totalAlloc);
+                } else {
+                    shareCents = Math.floor(sweepCents / state.goals.length);
+                }
+                distributedCents += shareCents;
+                g.current = roundMoney(g.current + shareCents / 100);
+            });
+
+            state.sweepWallet = 0;
+            addActivity(isAuto ? 'ส่งเงินเข้าเป้าหมายอัตโนมัติ' : 'ส่งเงินจากกระปุกพักเข้าเป้าหมาย', sweepAmount, 'sweep');
             saveState();
-            showToast('ลบกระปุกเป้าหมายแล้ว', 'เงินที่เคยเก็บไว้ถูกย้ายกลับเข้ากระปุกพักเงินอย่างปลอดภัย', 'brand');
             renderAll();
+
+            if (typeof confetti === 'function') {
+                try { confetti({ particleCount: 45, spread: 60, origin: { y: 0.7 } }); } catch (e) {}
+            }
+            showToast('ส่งเงินเข้ากระปุกเป้าหมายแล้ว! 🎯', `กระจายเงินออม ${formatCurrency(sweepAmount)} เข้าทุกเป้าหมายเรียบร้อยครับ`, 'success');
         }
 
-        function openAddGoalModal(editId = null) {
+        function openAddGoalModal(goalId = null) {
             const modal = document.getElementById('add-goal-modal');
             const titleEl = document.getElementById('goal-modal-title');
-            const editInput = document.getElementById('goal-edit-id');
+            const idInput = document.getElementById('goal-edit-id');
+            const nameInput = document.getElementById('goal-name-input');
+            const targetInput = document.getElementById('goal-target-input');
+            const allocInput = document.getElementById('goal-alloc-input');
+            const riskInput = document.getElementById('goal-risk-input');
 
-            if (editId) {
-                const g = state.goals.find(item => item.id === editId);
+            if (goalId) {
+                const g = state.goals.find(item => item.id === goalId);
                 if (!g) return;
-                titleEl.innerHTML = '<span>✏️</span> แก้ไขกระปุกเป้าหมาย';
-                editInput.value = g.id;
-                document.getElementById('goal-name-input').value = g.name;
-                document.getElementById('goal-target-input').value = g.target;
-                document.getElementById('goal-alloc-input').value = g.allocation;
-                document.getElementById('goal-risk-input').value = g.risk;
+                if (titleEl) titleEl.innerHTML = '<span>✏️</span> แก้ไขกระปุกเป้าหมาย';
+                if (idInput) idInput.value = g.id;
+                if (nameInput) nameInput.value = g.name;
+                if (targetInput) targetInput.value = g.target;
+                if (allocInput) allocInput.value = g.allocation;
+                if (riskInput) riskInput.value = g.risk || 'medium';
             } else {
-                titleEl.innerHTML = '<span>🎯</span> สร้างกระปุกเป้าหมายใหม่';
-                editInput.value = '';
-                document.getElementById('new-goal-form').reset();
+                if (titleEl) titleEl.innerHTML = '<span>🎯</span> สร้างกระปุกเป้าหมายใหม่';
+                if (idInput) idInput.value = '';
+                if (nameInput) nameInput.value = '';
+                if (targetInput) targetInput.value = '';
+                const currentSum = state.goals.reduce((s, item) => s + (Number(item.allocation) || 0), 0);
+                if (allocInput) allocInput.value = Math.max(0, Math.min(100, 100 - currentSum));
+                if (riskInput) riskInput.value = 'medium';
             }
-            modal.classList.remove('hidden');
+
+            modal?.classList.remove('hidden');
         }
 
         function closeAddGoalModal() {
-            document.getElementById('add-goal-modal').classList.add('hidden');
-            document.getElementById('new-goal-form').reset();
+            document.getElementById('add-goal-modal')?.classList.add('hidden');
         }
 
         function handleSaveGoal(e) {
-            e.preventDefault();
-            const editId = document.getElementById('goal-edit-id').value;
-            const name = document.getElementById('goal-name-input').value.trim();
-            const target = roundMoney(document.getElementById('goal-target-input').value);
-            const alloc = Math.max(0, Math.min(100, Math.round(Number(document.getElementById('goal-alloc-input').value) || 0)));
-            const risk = document.getElementById('goal-risk-input').value;
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const editId = document.getElementById('goal-edit-id')?.value || '';
+            const name = (document.getElementById('goal-name-input')?.value || '').trim();
+            const target = Math.max(100, roundMoney(document.getElementById('goal-target-input')?.value));
+            const allocation = Math.max(0, Math.min(100, Math.round(Number(document.getElementById('goal-alloc-input')?.value) || 0)));
+            const risk = document.getElementById('goal-risk-input')?.value || 'medium';
 
-            if (!name || !Number.isFinite(target) || target <= 0) {
-                showToast('ข้อมูลไม่ถูกต้อง', 'กรุณากรอกชื่อเป้าหมายและยอดเป้าหมายมากกว่า 0 บาทครับ', 'warning');
+            if (!name) {
+                showToast('กรุณาใส่ชื่อเป้าหมาย', 'ตั้งชื่อกระปุกเป้าหมายที่อยากเก็บเงินก่อนนะครับ', 'warn');
                 return;
             }
 
-            const riskConfig = {
-                low: { label: 'ปลอดภัย เงินต้นไม่หาย', ret: 2.5, emoji: '🛡️', color: 'mint' },
-                medium: { label: 'สมดุล ค่อยๆ งอกเงย', ret: 5.5, emoji: '⚖️', color: 'peach' },
-                high: { label: 'เน้นเติบโตระยะยาว', ret: 8.5, emoji: '🚀', color: 'sky' }
-            };
-            const cfg = riskConfig[risk] || riskConfig.medium;
-
             if (editId) {
-                const existing = state.goals.find(g => g.id === editId);
-                if (existing) {
-                    existing.name = name;
-                    existing.target = target;
-                    existing.allocation = alloc;
-                    existing.risk = risk;
-                    existing.riskLabel = cfg.label;
-                    existing.expectedReturn = cfg.ret;
-                    existing.emoji = cfg.emoji;
-                    existing.color = cfg.color;
+                const idx = state.goals.findIndex(g => g.id === editId);
+                if (idx !== -1) {
+                    state.goals[idx] = {
+                        ...state.goals[idx],
+                        name: name.slice(0, 80),
+                        target,
+                        allocation,
+                        risk,
+                        expectedReturn: riskToReturn(risk)
+                    };
+                    showToast('อัปเดตเป้าหมายแล้ว! ✨', `บันทึกการแก้ไข "${name}" เรียบร้อยครับ`, 'success');
                 }
-                showToast('แก้ไขเป้าหมายเรียบร้อย', `บันทึกข้อมูล "${name}" แล้วครับ`, 'success');
             } else {
                 state.goals.push({
-                    id: 'goal-' + Date.now(),
-                    name: name,
-                    risk: risk,
-                    riskLabel: cfg.label,
-                    expectedReturn: cfg.ret,
+                    id: 'g-' + Date.now(),
+                    name: name.slice(0, 80),
+                    target,
                     current: 0,
-                    target: target,
-                    allocation: alloc,
-                    emoji: cfg.emoji,
-                    color: cfg.color
+                    allocation,
+                    risk,
+                    expectedReturn: riskToReturn(risk)
                 });
-                showToast('เพิ่มกระปุกเป้าหมายใหม่แล้ว!', `เริ่มสะสมเงินให้ "${name}" (เริ่มต้น ฿0.00) ได้เลย`, 'success');
+                showToast('สร้างเป้าหมายใหม่แล้ว! 🎯', `เพิ่มกระปุก "${name}" เริ่มต้นที่ ฿0.00 ครับ`, 'success');
             }
 
-            closeAddGoalModal();
             saveState();
+            closeAddGoalModal();
             renderAll();
         }
 
+        function updateGoalAllocation(goalId, val) {
+            const g = state.goals.find(item => item.id === goalId);
+            if (!g) return;
+            g.allocation = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+            saveState();
+            renderGoalsSection();
+        }
+
+        function normalizeAllocations() {
+            if (!state.goals.length) return;
+            const total = state.goals.reduce((s, g) => s + (Number(g.allocation) || 0), 0);
+            if (total === 0) {
+                const even = Math.floor(100 / state.goals.length);
+                let rem = 100;
+                state.goals.forEach((g, idx) => {
+                    if (idx === state.goals.length - 1) {
+                        g.allocation = rem;
+                    } else {
+                        g.allocation = even;
+                        rem -= even;
+                    }
+                });
+            } else {
+                let rem = 100;
+                state.goals.forEach((g, idx) => {
+                    if (idx === state.goals.length - 1) {
+                        g.allocation = Math.max(0, rem);
+                    } else {
+                        const share = Math.round(((Number(g.allocation) || 0) * 100) / total);
+                        g.allocation = share;
+                        rem -= share;
+                    }
+                });
+            }
+            saveState();
+            renderGoalsSection();
+            showToast('ปรับสัดส่วนครบ 100% แล้ว! ✨', 'กระจายเปอร์เซ็นต์ให้ลงตัวพอดีเรียบร้อยครับ', 'success');
+        }
+
+        function deleteGoal(goalId) {
+            const idx = state.goals.findIndex(g => g.id === goalId);
+            if (idx === -1) return;
+            const removed = state.goals[idx];
+            if (roundMoney(removed.current) > 0) {
+                state.mainBalance = roundMoney(state.mainBalance + removed.current);
+                addActivity(`คืนเงินจากกระปุก "${removed.name}" เข้ากระเป๋าหลัก`, removed.current, 'goal_tx');
+            }
+            state.goals.splice(idx, 1);
+            saveState();
+            renderAll();
+            showToast('ลบเป้าหมายเรียบร้อย', `คืนยอดคงเหลือเข้ากระเป๋าหลักแล้วครับ`, 'brand');
+        }
+
         function openGoalTransferModal(goalId) {
-            const goal = state.goals.find(g => g.id === goalId);
-            if (!goal) return;
-            document.getElementById('gt-goal-id').value = goal.id;
-            document.getElementById('gt-goal-name').textContent = `${goal.emoji || '🎯'} ${goal.name}`;
-            document.getElementById('gt-goal-current').textContent = formatCurrency(goal.current);
+            const g = state.goals.find(item => item.id === goalId);
+            if (!g) return;
+            document.getElementById('gt-goal-id').value = g.id;
+            document.getElementById('gt-goal-name').textContent = g.name;
+            document.getElementById('gt-goal-current').textContent = formatCurrency(g.current);
             document.getElementById('gt-main-balance').textContent = formatCurrency(state.mainBalance);
             document.getElementById('gt-amount-input').value = '';
-            document.getElementById('goal-transfer-modal').classList.remove('hidden');
+            document.getElementById('goal-transfer-modal')?.classList.remove('hidden');
         }
 
         function closeGoalTransferModal() {
-            document.getElementById('goal-transfer-modal').classList.add('hidden');
+            document.getElementById('goal-transfer-modal')?.classList.add('hidden');
         }
 
         function handleGoalTransferSubmit(e) {
-            e.preventDefault();
-            const goalId = document.getElementById('gt-goal-id').value;
-            const action = document.getElementById('gt-action-select').value;
-            const amount = roundMoney(document.getElementById('gt-amount-input').value);
-            const goal = state.goals.find(g => g.id === goalId);
-            if (!goal || !Number.isFinite(amount) || amount <= 0) {
-                showToast('กรุณากรอกจำนวนเงินให้ถูกต้อง', 'จำนวนเงินต้องมากกว่า 0 บาทครับ', 'warning');
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const goalId = document.getElementById('gt-goal-id')?.value;
+            const action = document.getElementById('gt-action-select')?.value || 'deposit';
+            const amount = roundMoney(document.getElementById('gt-amount-input')?.value);
+            const g = state.goals.find(item => item.id === goalId);
+
+            if (!g || amount <= 0) {
+                showToast('กรุณาใส่จำนวนเงินที่ถูกต้อง', 'ระบุจำนวนเงินมากกว่า 0 บาทครับ', 'warn');
                 return;
             }
 
             if (action === 'deposit') {
                 if (state.mainBalance < amount) {
-                    showToast('เงินในกระเป๋าหลักไม่พอครับ', `กระเป๋าหลักมีเงินอยู่ ${formatCurrency(state.mainBalance)}`, 'danger');
+                    showToast('เงินในกระเป๋าหลักไม่พอ', `มีเงินคงเหลือ ${formatCurrency(state.mainBalance)}`, 'error');
                     return;
                 }
-                const wasBelow = goal.current < goal.target;
-                state.mainBalance = Math.max(0, roundMoney(state.mainBalance - amount));
-                goal.current = roundMoney(goal.current + amount);
-                addActivity(`เติมเงินเข้ากระปุก: ${goal.name}`, amount, 'invest', '💰');
-                
-                if (wasBelow && goal.current >= goal.target && typeof confetti === 'function') {
-                    confetti({ particleCount: 100, spread: 75, origin: { y: 0.6 } });
-                    showToast('🎉 ยินดีด้วย! เก็บครบเป้าหมายแล้ว!', `เติมเงิน ${formatCurrency(amount)} เข้า "${goal.name}" สำเร็จ!`, 'success');
-                } else {
-                    showToast('เติมเงินเข้ากระปุกสำเร็จ!', `หยอดเงิน ${formatCurrency(amount)} เข้า "${goal.name}" แล้วครับ`, 'success');
-                }
+                state.mainBalance = roundMoney(state.mainBalance - amount);
+                g.current = roundMoney(g.current + amount);
+                addActivity(`เติมเงินเข้า "${g.name}"`, amount, 'goal_tx');
+                showToast('เติมเงินเข้ากระปุกแล้ว! 💚', `เพิ่ม ${formatCurrency(amount)} ให้กับ "${g.name}"`, 'success');
             } else {
-                if (goal.current < amount) {
-                    showToast('เงินในกระปุกนี้ไม่พอถอนครับ', `กระปุกนี้มีเงินสะสมอยู่ ${formatCurrency(goal.current)}`, 'danger');
+                if (g.current < amount) {
+                    showToast('ยอดในกระปุกเป้าหมายไม่พอถอน', `มีเงินในกระปุกนี้ ${formatCurrency(g.current)}`, 'error');
                     return;
                 }
-                goal.current = Math.max(0, roundMoney(goal.current - amount));
+                g.current = roundMoney(g.current - amount);
                 state.mainBalance = roundMoney(state.mainBalance + amount);
-                addActivity(`ถอนเงินจากกระปุก: ${goal.name}`, amount, 'income', '💸');
-                showToast('ถอนเงินกลับกระเป๋าหลักแล้ว', `ย้ายเงิน ${formatCurrency(amount)} จาก "${goal.name}" กลับมาใช้จ่ายแล้ว`, 'warning');
+                addActivity(`ถอนเงินจาก "${g.name}"`, -amount, 'goal_tx');
+                showToast('ถอนเงินกลับกระเป๋าหลักแล้ว', `โอน ${formatCurrency(amount)} กลับกระเป๋าหลักเรียบร้อยครับ`, 'brand');
             }
 
+            saveState();
             closeGoalTransferModal();
-            evaluateAutoThrottling(false);
-            saveState();
             renderAll();
         }
 
-        function renderGoals() {
-            const container = document.getElementById('goals-container');
-            container.innerHTML = '';
-
-            const totalAlloc = state.goals.reduce((sum, g) => sum + Number(g.allocation || 0), 0);
-            const badgeEl = document.getElementById('total-allocation-badge');
-            const warnText = document.getElementById('allocation-warning-text');
-            const normBtn = document.getElementById('btn-normalize-alloc');
-
-            badgeEl.textContent = `${totalAlloc}%`;
-            if (totalAlloc === 100) {
-                badgeEl.className = 'font-bold px-3 py-0.5 rounded-full bg-mint-100 text-mint-600';
-                warnText.textContent = 'แบ่งสัดส่วนครบ 100% พอดีเป๊ะ! ✨';
-                warnText.className = 'text-xs sm:text-sm text-slate-600';
-                normBtn.classList.add('hidden');
-            } else {
-                badgeEl.className = 'font-bold px-3 py-0.5 rounded-full bg-rose-100 text-rose-600';
-                warnText.textContent = totalAlloc < 100 ? `ยังขาดอีก ${100 - totalAlloc}%` : `เกินมา ${totalAlloc - 100}%`;
-                warnText.className = 'text-xs sm:text-sm font-bold text-rose-600';
-                normBtn.classList.remove('hidden');
-            }
-
-            const colorClasses = {
-                mint: { cardBg: 'bg-mint-50/40 border-mint-200', iconBg: 'bg-mint-100', bar: 'from-mint-500 to-emerald-400', text: 'text-mint-600', badge: 'bg-mint-100 text-mint-700' },
-                peach: { cardBg: 'bg-peach-50/40 border-peach-200', iconBg: 'bg-peach-100', bar: 'from-peach-500 to-amber-400', text: 'text-peach-600', badge: 'bg-peach-100 text-peach-700' },
-                sky: { cardBg: 'bg-skysoft-50/40 border-skysoft-200', iconBg: 'bg-skysoft-100', bar: 'from-skysoft-500 to-indigo-400', text: 'text-skysoft-600', badge: 'bg-skysoft-100 text-skysoft-700' }
-            };
-
-            state.goals.forEach(goal => {
-                const pct = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
-                const c = colorClasses[goal.color] || colorClasses.peach;
-                const isDone = goal.current >= goal.target && goal.target > 0;
-
-                const card = document.createElement('div');
-                card.className = `p-5 rounded-3xl border-2 ${isDone ? 'border-mint-500 bg-mint-50/60' : c.cardBg} transition`;
-                card.innerHTML = `
-                    <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-2xl ${c.iconBg} flex items-center justify-center text-2xl shrink-0">
-                                ${escapeHtml(goal.emoji || '🎯')}
-                            </div>
-                            <div>
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <h3 class="font-cute font-bold text-base sm:text-lg text-slate-800">${escapeHtml(goal.name)}</h3>
-                                    ${isDone ? '<span class="text-xs font-bold bg-mint-500 text-white px-2.5 py-0.5 rounded-full">🎉 สำเร็จแล้ว!</span>' : ''}
-                                </div>
-                                <div class="flex flex-wrap items-center gap-2 mt-1">
-                                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${c.badge}">${escapeHtml(goal.riskLabel)}</span>
-                                    <span class="text-xs text-slate-500">ดอกผล ~${goal.expectedReturn}%/ปี</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex flex-wrap items-center gap-2">
-                            <button onclick="openGoalTransferModal('${goal.id}')" class="btn-bounce px-3.5 py-2 rounded-xl bg-mint-500 hover:bg-mint-600 text-white text-xs sm:text-sm font-bold shadow-2xs">
-                                💰 เติม / ถอน
-                            </button>
-                            <button onclick="openAddGoalModal('${goal.id}')" class="btn-bounce w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-peach-600 flex items-center justify-center" title="แก้ไขเป้าหมาย">
-                                ✏️
-                            </button>
-                            <button onclick="deleteGoal('${goal.id}')" class="btn-bounce w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-500 flex items-center justify-center" title="ลบเป้าหมาย">
-                                🗑️
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ยอดเงินและหลอดความคืบหน้าสดใส -->
-                    <div class="bg-white/90 p-3.5 rounded-2xl border border-white mb-3">
-                        <div class="flex justify-between items-baseline mb-1.5">
-                            <div>
-                                <span class="text-lg sm:text-xl font-bold text-slate-800">${formatCurrency(goal.current)}</span>
-                                <span class="text-xs sm:text-sm text-slate-500"> / เป้าหมาย ${formatShortCurrency(goal.target)}</span>
-                            </div>
-                            <span class="text-sm font-bold ${c.text}">ได้แล้ว ${pct}%</span>
-                        </div>
-                        <div class="w-full bg-slate-100 rounded-full h-3.5 p-0.5 overflow-hidden">
-                            <div class="bg-gradient-to-r ${c.bar} h-full rounded-full transition-all duration-500" style="width: ${pct}%"></div>
-                        </div>
-                    </div>
-
-                    <!-- ตัวปรับสัดส่วนแบ่งเงินออม (%) -->
-                    <div class="flex items-center justify-between gap-3 pt-1">
-                        <span class="text-xs sm:text-sm font-semibold text-slate-600">
-                            🍰 แบ่งเงินออมให้กระปุกนี้:
-                        </span>
-                        <div class="flex items-center gap-3 flex-1 max-w-[230px]">
-                            <input type="range" min="0" max="100" step="5" value="${goal.allocation}" oninput="updateGoalAllocation('${goal.id}', this.value)" class="w-full">
-                            <span class="text-sm font-bold text-slate-800 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 w-14 text-center">${goal.allocation}%</span>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        // ==========================================
-        // 5. เครื่องมือจำลองสถานการณ์อนาคต (What-If Simulator)
-        // ==========================================
-        function updateSimulator() {
-            const dailySave = Number(document.getElementById('sim-daily-slider').value);
-            const annualReturn = Number(document.getElementById('sim-return-slider').value);
-            const years = Number(document.getElementById('sim-years-slider').value);
-            const useActual = document.getElementById('sim-use-actual-toggle').checked;
-
-            document.getElementById('sim-daily-val').textContent = `฿${dailySave} / วัน`;
-            document.getElementById('sim-return-val').textContent = `${annualReturn.toFixed(1)}% / ปี`;
-            document.getElementById('sim-years-val').textContent = `${years} ปี`;
-            document.getElementById('sim-horizon-label').textContent = `เงินก้อนคาดการณ์ในอีก ${years} ปีข้างหน้า`;
-
-            const actualWealth = roundMoney(state.goals.reduce((s, g) => s + g.current, 0) + state.sweepWallet);
-            document.getElementById('sim-actual-wealth-text').textContent = `เงินเก็บจริงวันนี้: ${formatCurrency(actualWealth)}`;
-
-            const startingWealth = useActual ? actualWealth : 0;
-            document.getElementById('sim-starting-note').textContent = `เริ่มนับจากเงินเก็บจริงวันนี้: ${formatCurrency(startingWealth)}`;
-
-            const monthlySave = dailySave * 30;
-            const monthlyRate = (annualReturn / 100) / 12;
-
-            const labels = [];
-            const principalData = [];
-            const totalWealthData = [];
-
-            let currentTotal = startingWealth;
-            let currentPrincipal = startingWealth;
-
-            for (let year = 0; year <= years; year++) {
-                labels.push(year === 0 ? 'วันนี้' : `ปีที่ ${year}`);
-                principalData.push(Math.round(currentPrincipal));
-                totalWealthData.push(Math.round(currentTotal));
-
-                for (let m = 0; m < 12; m++) {
-                    currentTotal = (currentTotal + monthlySave) * (1 + monthlyRate);
-                    currentPrincipal += monthlySave;
-                }
-            }
-
-            const finalTotal = totalWealthData[years];
-            const finalPrincipal = principalData[years];
-            const finalInterest = Math.max(0, finalTotal - finalPrincipal);
-
-            document.getElementById('sim-future-total').textContent = formatShortCurrency(finalTotal);
-            document.getElementById('sim-principal-total').textContent = formatShortCurrency(finalPrincipal);
-            document.getElementById('sim-interest-total').textContent = `+${formatShortCurrency(finalInterest)}`;
-
-            renderChart(labels, principalData, totalWealthData);
-        }
-
-        function renderChart(labels, principalData, totalWealthData) {
-            const canvas = document.getElementById('wealthGrowthChart');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            
-            if (wealthChart) {
-                wealthChart.data.labels = labels;
-                wealthChart.data.datasets[0].data = totalWealthData;
-                wealthChart.data.datasets[1].data = principalData;
-                wealthChart.resize();
-                wealthChart.update('none');
-                return;
-            }
-
-            wealthChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'เงินออมรวมดอกผลงอกเงย ✨',
-                            data: totalWealthData,
-                            borderColor: '#FF7034',
-                            backgroundColor: 'rgba(255, 112, 52, 0.14)',
-                            borderWidth: 3.5,
-                            pointBackgroundColor: '#FF7034',
-                            pointBorderColor: '#ffffff',
-                            pointRadius: 4,
-                            fill: true,
-                            tension: 0.35
-                        },
-                        {
-                            label: 'เงินต้นที่เราหยอดเอง',
-                            data: principalData,
-                            borderColor: '#22B07D',
-                            backgroundColor: 'transparent',
-                            borderWidth: 2.5,
-                            borderDash: [6, 6],
-                            pointRadius: 2,
-                            fill: false,
-                            tension: 0.35
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: { font: { family: 'Prompt', size: 13 }, usePointStyle: true, boxWidth: 10 }
-                        },
-                        tooltip: {
-                            backgroundColor: '#1E293B',
-                            titleFont: { family: 'Prompt', size: 14 },
-                            bodyFont: { family: 'Prompt', size: 13 },
-                            padding: 12,
-                            cornerRadius: 14,
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.dataset.label}: ฿${context.parsed.y.toLocaleString('th-TH')}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { font: { family: 'Prompt', size: 12 }, color: '#64748B' }
-                        },
-                        y: {
-                            border: { display: false },
-                            grid: { color: '#FFF0E6' },
-                            ticks: {
-                                font: { family: 'Prompt', size: 12 },
-                                color: '#64748B',
-                                callback: function(value) {
-                                    if (value >= 1000000) return '฿' + (value / 1000000).toFixed(1) + ' ล้าน';
-                                    if (value >= 1000) return '฿' + (value / 1000) + ' พัน';
-                                    return '฿' + value;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // ==========================================
-        // 6. การตั้งค่า, Export CSV, รีเซ็ตเป็น 0 และ Render Pipeline
-        // ==========================================
         function openSettingsModal() {
-            document.getElementById('set-sweep-threshold').value = state.sweepThreshold;
-            document.getElementById('set-low-threshold').value = state.lowLiquidityThreshold;
-            document.getElementById('set-high-threshold').value = state.highLiquidityThreshold;
-            document.getElementById('settings-modal').classList.remove('hidden');
+            document.getElementById('set-sweep-threshold').value = state.settings.sweepThreshold;
+            document.getElementById('set-low-threshold').value = state.settings.lowBalanceThreshold;
+            document.getElementById('set-high-threshold').value = state.settings.highBalanceThreshold;
+            document.getElementById('settings-modal')?.classList.remove('hidden');
         }
+
         function closeSettingsModal() {
-            document.getElementById('settings-modal').classList.add('hidden');
+            document.getElementById('settings-modal')?.classList.add('hidden');
         }
+
         function handleSaveSettings(e) {
-            e.preventDefault();
-            const sweepTh = roundMoney(document.getElementById('set-sweep-threshold').value);
-            const lowTh = roundMoney(document.getElementById('set-low-threshold').value);
-            const highTh = roundMoney(document.getElementById('set-high-threshold').value);
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            const sweepT = Math.max(10, roundMoney(document.getElementById('set-sweep-threshold')?.value));
+            const lowT = Math.max(0, roundMoney(document.getElementById('set-low-threshold')?.value));
+            const highT = Math.max(lowT + 500, roundMoney(document.getElementById('set-high-threshold')?.value));
 
-            if (!Number.isFinite(sweepTh) || sweepTh < 10) {
-                showToast('ยอดเกณฑ์กระปุกพักเงินต่ำเกินไป', 'กรุณากำหนดอย่างน้อย 10 บาทครับ', 'danger');
-                return;
-            }
-            if (highTh <= lowTh) {
-                showToast('ตัวเลขยังไม่ถูกต้องครับ', 'เกณฑ์เปิดโหมดเร่งออม ต้องมากกว่าเกณฑ์โหมดประหยัดนะครับ', 'danger');
-                return;
-            }
-
-            state.sweepThreshold = sweepTh;
-            state.lowLiquidityThreshold = lowTh;
-            state.highLiquidityThreshold = highTh;
-            closeSettingsModal();
-            evaluateAutoThrottling(false);
-            saveState();
-            renderAll();
-            showToast('บันทึกการตั้งค่าเรียบร้อย!', 'ปรับเกณฑ์ช่วยออมอัตโนมัติตามที่คุณต้องการแล้วครับ', 'success');
-        }
-
-        function exportTransactionsCSV() {
-            if (state.activities.length === 0) {
-                showToast('ยังไม่มีรายการในสมุดบันทึก', 'ลองจดรายรับ-รายจ่าย หรือกดหยอดกระปุกออมย่อยก่อนส่งออกไฟล์นะครับ', 'warning');
-                return;
-            }
-            const typeMap = {
-                income: 'รายรับเข้า',
-                expense: 'รายจ่ายออก',
-                micro: 'ออมย่อยเข้ากระปุกพัก',
-                invest: 'โอนเข้ากระปุกเป้าหมาย'
+            state.settings = {
+                sweepThreshold: sweepT,
+                lowBalanceThreshold: lowT,
+                highBalanceThreshold: highT
             };
-            const headers = ['วันเวลา,รายการ,ประเภท,จำนวนเงิน(บาท)'];
-            const rows = state.activities.map(a => {
-                const safeTitle = `"${String(a.title).replace(/"/g, '""')}"`;
-                const typeLabel = typeMap[a.type] || a.type;
-                return `"${a.timestamp}",${safeTitle},"${typeLabel}",${roundMoney(a.amount).toFixed(2)}`;
-            });
-            const csvContent = '\uFEFF' + headers.concat(rows).join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.setAttribute('href', url);
-            link.setAttribute('download', `StepSave_สมุดบันทึก_${new Date().toISOString().slice(0,10)}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            showToast('ดาวน์โหลดไฟล์ CSV สำเร็จ!', 'สามารถเปิดดูสมุดบันทึกในโปรแกรม Excel ได้เลยครับ', 'success');
+            saveState();
+            closeSettingsModal();
+            renderAll();
+            showToast('บันทึกการตั้งค่าแล้ว! ⚙️', 'อัปเดตเกณฑ์การช่วยออมอัตโนมัติเรียบร้อยครับ', 'success');
         }
 
         function openResetConfirmModal() {
-            document.getElementById('reset-confirm-modal').classList.remove('hidden');
+            document.getElementById('reset-confirm-modal')?.classList.remove('hidden');
         }
+
         function closeResetConfirmModal() {
-            document.getElementById('reset-confirm-modal').classList.add('hidden');
+            document.getElementById('reset-confirm-modal')?.classList.add('hidden');
         }
+
         function confirmResetAllToZero() {
             if (isGuestMode || !currentUser || currentUser.isGuest) {
-                localStorage.removeItem(GUEST_STORAGE_KEY);
+                try { localStorage.removeItem(GUEST_STORAGE_KEY); } catch (e) {}
+            } else if (currentUser?.uid) {
+                saveLocalAccountData(currentUser.uid, getFreshZeroState());
             }
             state = getFreshZeroState();
             saveState();
@@ -2368,112 +2319,295 @@
             showToast('เริ่มนับ 0 ใหม่เรียบร้อย!', 'ล้างข้อมูลในบัญชีนี้กลับเป็น 0 บาท พร้อมเริ่มต้นวางแผนใหม่แล้วครับ', 'brand');
         }
 
-        function renderSummary() {
-            const goalsTotal = roundMoney(state.goals.reduce((s, g) => s + g.current, 0));
-            const totalWealth = roundMoney(goalsTotal + state.sweepWallet);
-
-            document.getElementById('total-wealth-display').textContent = formatCurrency(totalWealth);
-            document.getElementById('main-balance-display').textContent = formatCurrency(state.mainBalance);
-            document.getElementById('sweep-wallet-summary').textContent = formatCurrency(state.sweepWallet);
-            document.getElementById('sweep-card-hint').textContent = `สะสมครบ ${formatShortCurrency(state.sweepThreshold)} จะย้ายเข้าเป้าหมายอัตโนมัติ`;
-            document.getElementById('auto-sweep-checkbox').checked = state.autoSweep;
-
-            const subSummaryEl = document.getElementById('wealth-sub-summary');
-            if (totalWealth === 0) {
-                subSummaryEl.textContent = 'เริ่มต้นใหม่ (฿0.00) มาเริ่มหยอดกระปุกกันเลย!';
-            } else {
-                subSummaryEl.textContent = `อยู่ในเป้าหมาย ${formatShortCurrency(goalsTotal)} + กระปุกพัก ${formatShortCurrency(state.sweepWallet)}`;
+        function exportTransactionsCSV() {
+            if (!state.activities.length) {
+                showToast('ยังไม่มีประวัติรายการ', 'ลองบันทึกรายรับ-รายจ่ายหรือหยอดกระปุกก่อนส่งออกไฟล์ครับ', 'warn');
+                return;
             }
-
-            // อัปเดต Sweep Wallet UI
-            const sweepPct = state.sweepThreshold > 0 ? Math.min(100, Math.round((state.sweepWallet / state.sweepThreshold) * 100)) : 0;
-            document.getElementById('sweep-progress-bar').style.width = `${sweepPct}%`;
-            document.getElementById('sweep-percent-text').textContent = state.sweepWallet >= state.sweepThreshold 
-                ? 'ครบเกณฑ์พร้อมส่งแล้ว! 🎉' 
-                : `${sweepPct}% (เป้าหมาย ${formatShortCurrency(state.sweepThreshold)})`;
-
-            const manualSweepBtn = document.getElementById('btn-manual-sweep');
-            manualSweepBtn.disabled = state.sweepWallet <= 0;
-
-            const totalAlloc = state.goals.reduce((s, g) => s + Number(g.allocation || 0), 0);
-            if (totalAlloc > 0) {
-                const weightedRet = state.goals.reduce((s, g) => s + (g.expectedReturn * (Number(g.allocation || 0) / totalAlloc)), 0);
-                document.getElementById('weighted-return-display').textContent = `${weightedRet.toFixed(1)}% / ปี`;
-            } else {
-                document.getElementById('weighted-return-display').textContent = `0.0% / ปี`;
-            }
+            const rows = [['ลำดับ', 'เวลา', 'ประเภท', 'รายการ', 'จำนวนเงิน (บาท)']];
+            state.activities.forEach((a, idx) => {
+                rows.push([idx + 1, a.time, a.type, `"${String(a.title).replace(/"/g, '""')}"`, a.amount]);
+            });
+            const csvContent = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `stepsave-history-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('ส่งออกไฟล์ CSV สำเร็จ! 📄', 'ดาวน์โหลดสมุดบัญชีเรียบร้อยแล้วครับ', 'success');
         }
 
-        function renderActivityLog() {
-            const list = document.getElementById('activity-log-list');
-            document.getElementById('activity-count-badge').textContent = `${state.activities.length} รายการ`;
-            list.innerHTML = '';
+        function getTotalSavedWealth() {
+            const goalsSum = state.goals.reduce((s, g) => s + roundMoney(g.current), 0);
+            return roundMoney(state.sweepWallet + goalsSum);
+        }
 
-            if (state.activities.length === 0) {
+        function renderSummaryCards() {
+            const totalWealth = getTotalSavedWealth();
+            const mainEl = document.getElementById('main-balance-display');
+            const sweepEl = document.getElementById('sweep-wallet-summary');
+            const wealthEl = document.getElementById('total-wealth-display');
+            const sweepHint = document.getElementById('sweep-card-hint');
+            const sweepPctText = document.getElementById('sweep-percent-text');
+            const sweepBar = document.getElementById('sweep-progress-bar');
+            const manualSweepBtn = document.getElementById('btn-manual-sweep');
+            const autoSweepCb = document.getElementById('auto-sweep-checkbox');
+
+            if (mainEl) mainEl.textContent = formatCurrency(state.mainBalance);
+            if (sweepEl) sweepEl.textContent = formatCurrency(state.sweepWallet);
+            if (wealthEl) wealthEl.textContent = formatCurrency(totalWealth);
+            if (autoSweepCb) autoSweepCb.checked = Boolean(state.autoSweep);
+
+            const threshold = Math.max(10, state.settings.sweepThreshold);
+            const pct = Math.min(100, Math.round((state.sweepWallet / threshold) * 100));
+            if (sweepHint) sweepHint.textContent = `สะสมครบ ${formatWholeCurrency(threshold)} จะย้ายเข้าเป้าหมายอัตโนมัติ`;
+            if (sweepPctText) sweepPctText.textContent = `${pct}% (เป้าหมาย ${formatWholeCurrency(threshold)})`;
+            if (sweepBar) sweepBar.style.width = `${pct}%`;
+            if (manualSweepBtn) manualSweepBtn.disabled = state.sweepWallet <= 0;
+        }
+
+        function renderHabitRules() {
+            const container = document.getElementById('habit-rules-container');
+            if (!container) return;
+            const throttle = getActiveThrottleInfo();
+
+            container.innerHTML = state.habitRules.map(h => {
+                const effAmt = roundMoney(h.amount * throttle.multiplier);
+                const disabled = state.mainBalance < effAmt;
+                return `
+                    <button type="button" onclick="triggerHabitRule('${h.id}')" ${disabled ? 'disabled' : ''} class="btn-bounce text-left p-3 rounded-2xl border-2 ${disabled ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed' : 'bg-mint-50/70 hover:bg-mint-100 border-mint-200'} transition flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="text-xl shrink-0">${h.icon}</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700 truncate">${h.title}</span>
+                        </div>
+                        <span class="text-xs font-bold text-mint-600 bg-white px-2.5 py-1 rounded-xl border border-mint-200 shrink-0">+${formatWholeCurrency(effAmt)}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderActivities() {
+            const list = document.getElementById('activity-log-list');
+            const badge = document.getElementById('activity-count-badge');
+            if (badge) badge.textContent = `${state.activities.length} รายการ`;
+            if (!list) return;
+
+            if (!state.activities.length) {
                 list.innerHTML = `
-                    <div class="text-center py-6 px-4 rounded-2xl bg-peach-50/60 border-2 border-dashed border-peach-200 text-sm text-slate-500">
-                        <span class="text-2xl block mb-1">📖</span>
-                        สมุดบันทึกยังว่างอยู่ ลองจดรายรับหรือกดหยอดกระปุกดูนะครับ
+                    <div class="text-center py-6 px-3 rounded-2xl bg-peach-50/60 border border-dashed border-peach-200 text-xs sm:text-sm text-slate-400">
+                        ยังไม่มีรายการเคลื่อนไหว เริ่มจดรายรับหรือหยอดกระปุกได้เลยครับ 🐷
                     </div>
                 `;
                 return;
             }
 
-            state.activities.slice(0, 20).forEach(act => {
-                const badgeColor = act.type === 'invest' 
-                    ? 'text-skysoft-600 bg-skysoft-100' 
-                    : (act.amount >= 0 ? 'text-mint-600 bg-mint-100' : 'text-rose-600 bg-rose-100');
-
-                const item = document.createElement('div');
-                item.className = 'flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 text-sm';
-                item.innerHTML = `
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-lg shrink-0">
-                            ${escapeHtml(act.emoji || '🪙')}
+            list.innerHTML = state.activities.slice(0, 20).map(a => {
+                const isPos = a.amount >= 0;
+                return `
+                    <div class="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50/90 border border-slate-100 text-xs sm:text-sm">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-slate-700 truncate">${a.title}</div>
+                            <div class="text-[11px] text-slate-400">${a.time}</div>
                         </div>
-                        <div class="truncate">
-                            <div class="font-bold text-slate-800 truncate">${escapeHtml(act.title)}</div>
-                            <div class="text-xs text-slate-400">${escapeHtml(act.timestamp)}</div>
+                        <div class="font-bold shrink-0 ${isPos ? 'text-mint-600' : 'text-rose-600'}">
+                            ${isPos ? '+' : ''}${formatCurrency(a.amount)}
                         </div>
                     </div>
-                    <span class="font-bold px-2.5 py-1 rounded-xl shrink-0 ${badgeColor}">
-                        ${act.amount >= 0 ? '+' : ''}${formatCurrency(act.amount)}
-                    </span>
                 `;
-                list.appendChild(item);
-            });
+            }).join('');
+        }
+
+        function renderGoalsSection() {
+            const container = document.getElementById('goals-container');
+            const allocBadge = document.getElementById('total-allocation-badge');
+            const allocWarn = document.getElementById('allocation-warning-text');
+            const normBtn = document.getElementById('btn-normalize-alloc');
+            const retEl = document.getElementById('weighted-return-display');
+
+            const totalAlloc = state.goals.reduce((s, g) => s + (Number(g.allocation) || 0), 0);
+            if (allocBadge) {
+                allocBadge.textContent = `${totalAlloc}%`;
+                allocBadge.className = totalAlloc === 100
+                    ? 'font-bold px-3 py-0.5 rounded-full bg-mint-100 text-mint-600'
+                    : 'font-bold px-3 py-0.5 rounded-full bg-amber-100 text-amber-700';
+            }
+
+            if (totalAlloc === 100) {
+                if (allocWarn) allocWarn.textContent = 'แบ่งสัดส่วนครบ 100% พอดีเป๊ะ! ✨';
+                if (normBtn) normBtn.classList.add('hidden');
+            } else {
+                if (allocWarn) allocWarn.textContent = `สัดส่วนรวมปัจจุบัน ${totalAlloc}% (แนะนำให้รวมเป็น 100%)`;
+                if (normBtn) normBtn.classList.remove('hidden');
+            }
+
+            const weightedReturn = totalAlloc > 0
+                ? state.goals.reduce((s, g) => s + ((Number(g.allocation) || 0) / totalAlloc) * (Number(g.expectedReturn) || 5.5), 0)
+                : 0;
+            if (retEl) retEl.textContent = `${weightedReturn.toFixed(1)}% / ปี`;
+
+            if (!container) return;
+            if (!state.goals.length) {
+                container.innerHTML = `
+                    <div class="text-center py-8 px-4 rounded-3xl bg-skysoft-50/60 border-2 border-dashed border-skysoft-200 text-sm text-slate-500">
+                        ยังไม่มีกระปุกเป้าหมาย กดปุ่ม "สร้างเป้าหมายใหม่" ด้านบนเพื่อเริ่มต้นได้เลยครับ 🎯
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = state.goals.map(g => {
+                const pct = Math.min(100, Math.round((g.current / Math.max(1, g.target)) * 100));
+                return `
+                    <div class="p-4 rounded-3xl bg-white border-2 border-peach-100 hover:border-peach-200 transition space-y-3">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <div class="font-cute font-bold text-base sm:text-lg text-slate-800">${g.name}</div>
+                                <div class="text-xs text-slate-500 mt-0.5">
+                                    เก็บได้แล้ว <strong class="text-mint-600">${formatCurrency(g.current)}</strong> จากเป้าหมาย <strong>${formatWholeCurrency(g.target)}</strong> (${pct}%)
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <button type="button" onclick="openGoalTransferModal('${g.id}')" class="btn-bounce px-3 py-1.5 rounded-xl text-xs font-bold bg-mint-50 text-mint-600 border border-mint-200 hover:bg-mint-100">
+                                    💸 เติม/ถอน
+                                </button>
+                                <button type="button" onclick="openAddGoalModal('${g.id}')" class="btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200" title="แก้ไข">
+                                    ✏️
+                                </button>
+                                <button type="button" onclick="deleteGoal('${g.id}')" class="btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100" title="ลบ">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="w-full bg-peach-50 rounded-full h-3 overflow-hidden border border-peach-100">
+                            <div class="bg-gradient-to-r from-mint-500 to-emerald-400 h-full rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                        </div>
+
+                        <div class="flex items-center justify-between gap-3 pt-1">
+                            <label class="text-xs font-semibold text-slate-600 shrink-0">สัดส่วนแบ่งเงินออม (%):</label>
+                            <div class="flex items-center gap-2 flex-1 max-w-[220px]">
+                                <input type="range" min="0" max="100" step="5" value="${g.allocation}" oninput="updateGoalAllocation('${g.id}', this.value)" class="w-full">
+                                <span class="text-xs font-bold text-peach-600 w-10 text-right">${g.allocation}%</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateSimulator() {
+            const daily = Math.max(0, Number(document.getElementById('sim-daily-slider')?.value || 50));
+            const annualRate = Math.max(0, Number(document.getElementById('sim-return-slider')?.value || 5.5)) / 100;
+            const years = Math.max(1, Math.min(30, parseInt(document.getElementById('sim-years-slider')?.value || '10', 10)));
+            const useActual = Boolean(document.getElementById('sim-use-actual-toggle')?.checked);
+
+            const actualWealth = getTotalSavedWealth();
+            const startPrincipal = useActual ? actualWealth : 0;
+
+            document.getElementById('sim-daily-val').textContent = `${formatWholeCurrency(daily)} / วัน`;
+            document.getElementById('sim-return-val').textContent = `${(annualRate * 100).toFixed(1)}% / ปี`;
+            document.getElementById('sim-years-val').textContent = `${years} ปี`;
+            document.getElementById('sim-actual-wealth-text').textContent = `เงินเก็บจริงวันนี้: ${formatCurrency(actualWealth)}`;
+            document.getElementById('sim-horizon-label').textContent = `เงินก้อนคาดการณ์ในอีก ${years} ปีข้างหน้า`;
+            document.getElementById('sim-starting-note').textContent = `เริ่มนับจากเงินเก็บจริงวันนี้: ${formatCurrency(startPrincipal)}`;
+
+            const labels = [];
+            const totalSeries = [];
+            const principalSeries = [];
+
+            let balance = startPrincipal;
+            let principalOnly = startPrincipal;
+            const monthlyContrib = daily * 30;
+            const monthlyRate = annualRate / 12;
+
+            for (let y = 0; y <= years; y++) {
+                labels.push(y === 0 ? 'วันนี้' : `ปีที่ ${y}`);
+                totalSeries.push(Math.round(balance));
+                principalSeries.push(Math.round(principalOnly));
+
+                for (let m = 0; m < 12; m++) {
+                    balance = balance * (1 + monthlyRate) + monthlyContrib;
+                    principalOnly += monthlyContrib;
+                }
+            }
+
+            const finalTotal = totalSeries[totalSeries.length - 1] || 0;
+            const finalPrincipal = principalSeries[principalSeries.length - 1] || 0;
+            const finalInterest = Math.max(0, finalTotal - finalPrincipal);
+
+            document.getElementById('sim-future-total').textContent = formatWholeCurrency(finalTotal);
+            document.getElementById('sim-principal-total').textContent = formatWholeCurrency(finalPrincipal);
+            document.getElementById('sim-interest-total').textContent = `+${formatWholeCurrency(finalInterest)}`;
+
+            const canvas = document.getElementById('wealthGrowthChart');
+            if (!canvas || typeof Chart === 'undefined') return;
+
+            if (wealthChartInstance) {
+                wealthChartInstance.data.labels = labels;
+                wealthChartInstance.data.datasets[0].data = totalSeries;
+                wealthChartInstance.data.datasets[1].data = principalSeries;
+                wealthChartInstance.update();
+            } else {
+                wealthChartInstance = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: 'เงินออมรวมดอกผลคาดการณ์ (บาท)',
+                                data: totalSeries,
+                                borderColor: '#FF7034',
+                                backgroundColor: 'rgba(255, 112, 52, 0.14)',
+                                fill: true,
+                                tension: 0.35,
+                                borderWidth: 3
+                            },
+                            {
+                                label: 'เงินต้นที่สะสมเอง (บาท)',
+                                data: principalSeries,
+                                borderColor: '#22B07D',
+                                backgroundColor: 'rgba(34, 176, 125, 0.08)',
+                                fill: false,
+                                tension: 0.35,
+                                borderWidth: 2,
+                                borderDash: [6, 4]
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { position: 'top' }
+                        },
+                        scales: {
+                            y: {
+                                ticks: {
+                                    callback: (v) => '฿' + Number(v).toLocaleString('th-TH')
+                                }
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         function renderAll() {
-            renderSummary();
             renderFriendlyAdvisor();
+            renderSummaryCards();
             renderHabitRules();
-            renderGoals();
-            renderActivityLog();
+            renderActivities();
+            renderGoalsSection();
             previewRoundUp();
             updateSimulator();
         }
 
-        // รองรับการกดปุ่ม Esc เพื่อปิดหน้าต่าง Modal ทุกตัวได้อย่างสะดวก
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeAddGoalModal();
-                closeGoalTransferModal();
-                closeHabitModal();
-                closeSettingsModal();
-                closeResetConfirmModal();
-            }
-        });
-
-        window.addEventListener('DOMContentLoaded', () => {
-            if (window.StepSaveCloud && window.StepSaveCloud.isReady()) {
-                initAuthListener();
-            } else {
-                showAuthScreenUI();
-            }
-        });
-
-        // ผูกฟังก์ชันทั้งหมดเข้ากับ window อย่างชัดเจนเพื่อป้องกัน ReferenceError ในทุกสถานการณ์
+        // ผูกฟังก์ชันทั้งหมดเข้ากับ window ทันที เพื่อป้องกัน ReferenceError บนทุกปุ่มและฟอร์ม
         Object.assign(window, {
             switchAuthTab,
             handleGoogleLogin,
@@ -2494,25 +2628,94 @@
             openHabitModal,
             closeHabitModal,
             handleAddHabitRule,
-            deleteHabitRule,
             sweepToGoalsNow,
-            updateGoalAllocation,
-            normalizeAllocations,
-            deleteGoal,
             openAddGoalModal,
             closeAddGoalModal,
             handleSaveGoal,
+            updateGoalAllocation,
+            normalizeAllocations,
+            deleteGoal,
             openGoalTransferModal,
             closeGoalTransferModal,
             handleGoalTransferSubmit,
-            updateSimulator,
             openSettingsModal,
             closeSettingsModal,
             handleSaveSettings,
-            exportTransactionsCSV,
             openResetConfirmModal,
             closeResetConfirmModal,
-            confirmResetAllToZero
+            confirmResetAllToZero,
+            exportTransactionsCSV,
+            updateSimulator,
+            saveState
+        });
+
+        function restoreLocalSessionIfAvailable() {
+            try {
+                const savedSession = localStorage.getItem(LOCAL_SESSION_KEY);
+                if (savedSession) {
+                    const parsedUser = JSON.parse(savedSession);
+                    if (parsedUser && parsedUser.uid) {
+                        isGuestMode = false;
+                        currentUser = parsedUser;
+                        state = loadLocalAccountData(parsedUser.uid) || getFreshZeroState();
+                        showMainAppUI();
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to restore local session:', e);
+            }
+            return false;
+        }
+
+        function initAuthListener() {
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady()) {
+                if (!restoreLocalSessionIfAvailable()) {
+                    showAuthScreenUI();
+                }
+                return;
+            }
+
+            try {
+                const auth = cloud.getAuth();
+                cloud.onAuthStateChanged(auth, async (user) => {
+                    if (user && !user.isAnonymous) {
+                        isGuestMode = false;
+                        currentUser = user;
+                        await setupUserCloudSync(user);
+                    } else if (!isGuestMode && !currentUser?.isLocalAccount) {
+                        if (!restoreLocalSessionIfAvailable()) {
+                            currentUser = null;
+                            showAuthScreenUI();
+                        }
+                    }
+                });
+            } catch (err) {
+                if (!restoreLocalSessionIfAvailable()) {
+                    showAuthScreenUI();
+                }
+            }
+        }
+
+        window.addEventListener('stepsave-firebase-ready', initAuthListener);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeAddGoalModal();
+                closeGoalTransferModal();
+                closeHabitModal();
+                closeSettingsModal();
+                closeResetConfirmModal();
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.StepSaveCloud && window.StepSaveCloud.isReady()) {
+                initAuthListener();
+            } else if (!restoreLocalSessionIfAvailable()) {
+                showAuthScreenUI();
+            }
         });
     </script>
 </body>
