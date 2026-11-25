@@ -1,0 +1,2519 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StepSave (สเต็ปเซฟ) | กระปุกออมเงินแสนฉลาด เข้าใจง่ายทุกวัย</title>
+    <!-- โหลด Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- โหลด Google Fonts: Prompt และ Mali เพื่อความอบอุ่น น่ารัก อ่านง่ายทุกวัย -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mali:wght@500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- โหลด Font Awesome สำหรับไอคอน -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- โหลด Chart.js สำหรับกราฟจำลองสถานการณ์อนาคต -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- โหลด Canvas Confetti สำหรับเอฟเฟกต์ฉลองเมื่อถึงเป้าหมาย -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                        cute: ['Mali', 'Prompt', 'sans-serif'],
+                    },
+                    colors: {
+                        peach: {
+                            50: '#FFF9F5',
+                            100: '#FFEFE5',
+                            200: '#FFD9C2',
+                            300: '#FFB894',
+                            400: '#FF8F5E',
+                            500: '#FF7034',
+                            600: '#E8551A',
+                        },
+                        mint: {
+                            50: '#F2FBF7',
+                            100: '#DCF5EA',
+                            200: '#B8EAD5',
+                            500: '#22B07D',
+                            600: '#188F64',
+                        },
+                        skysoft: {
+                            50: '#F3F8FF',
+                            100: '#E0EDFF',
+                            200: '#C2DBFF',
+                            500: '#3B82F6',
+                            600: '#2563EB',
+                        },
+                        cream: {
+                            50: '#FFFDF7',
+                            100: '#FEF7E2',
+                            200: '#FDE9B4',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #FFF9F5;
+            background-image: radial-gradient(#FFD9C2 0.8px, transparent 0.8px), radial-gradient(#DCF5EA 0.8px, #FFF9F5 0.8px);
+            background-size: 32px 32px;
+            background-position: 0 0, 16px 16px;
+            color: #334155;
+        }
+        /* ปรับแต่งแถบเลื่อน (Range Slider) ให้น่ารักและจับง่าย */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 26px;
+            width: 26px;
+            border-radius: 50%;
+            background: #FF7034;
+            cursor: pointer;
+            margin-top: -8px;
+            box-shadow: 0 4px 10px rgba(255, 112, 52, 0.35);
+            border: 3px solid #ffffff;
+            transition: transform 0.15s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 10px;
+            cursor: pointer;
+            background: #FFE5D6;
+            border-radius: 999px;
+        }
+        .cute-card {
+            background: #FFFFFF;
+            border-radius: 1.75rem;
+            box-shadow: 0 8px 24px -6px rgba(255, 143, 94, 0.12), 0 2px 6px -1px rgba(51, 65, 85, 0.04);
+            border: 2px solid #FFF0E6;
+        }
+        .btn-bounce {
+            transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .btn-bounce:active {
+            transform: scale(0.95);
+        }
+        /* ซ่อน Scrollbar แนวนอนของเมนูแท็บในมือถือ */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-peach-400 selection:text-white pb-20 text-base">
+
+    <!-- แถบแจ้งเตือนแบบ Toast น่ารักอ่านง่าย (แทนการใช้ alert) -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[60] flex flex-col gap-3 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+    <!-- ===================================================================== -->
+    <!-- หน้าจอเข้าสู่ระบบ / สมัครสมาชิก (Authentication Screen โทนสีอบอุ่นน่ารัก) -->
+    <!-- ===================================================================== -->
+    <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4 sm:p-6">
+        <div class="max-w-md w-full bg-white rounded-[2rem] shadow-2xl border-2 border-peach-200 p-6 sm:p-8 relative overflow-hidden">
+            <!-- ตกแต่งพื้นหลังมุมบนเบาๆ -->
+            <div class="absolute -top-12 -right-12 w-36 h-36 bg-peach-100 rounded-full opacity-60 pointer-events-none"></div>
+            <div class="absolute -bottom-12 -left-12 w-36 h-36 bg-mint-100 rounded-full opacity-60 pointer-events-none"></div>
+
+            <div class="relative z-10">
+                <!-- โลโก้และคำทักทาย -->
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 rounded-3xl bg-gradient-to-br from-peach-400 to-amber-400 flex items-center justify-center text-white text-4xl shadow-lg shadow-peach-400/30 mx-auto mb-3">
+                        🐷
+                    </div>
+                    <h1 class="font-cute font-bold text-3xl text-slate-800">
+                        Step<span class="text-peach-500">Save</span>
+                    </h1>
+                    <p class="text-sm text-slate-500 mt-1">กระปุกออมเงินแสนฉลาด จำข้อมูลแยกส่วนตัวทุกเครื่อง ✨</p>
+                </div>
+
+                <!-- ปุ่มเข้าสู่ระบบด้วย Google -->
+                <button type="button" onclick="handleGoogleLogin()" id="btn-google-login" class="btn-bounce w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-200 shadow-xs flex items-center justify-center gap-3 text-slate-700 font-bold text-base mb-5">
+                    <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <path fill="#EA4335" d="M12 5c1.617 0 3.077.557 4.223 1.65l3.167-3.167C17.475 1.693 14.977.6 12 .6 7.547.6 3.702 3.153 1.833 6.875l3.694 2.866C6.402 7.11 8.972 5 12 5z"/>
+                        <path fill="#4285F4" d="M23.49 12.275c0-.85-.075-1.675-.215-2.475H12v4.685h6.445c-.28 1.49-1.12 2.755-2.385 3.605l3.685 2.86c2.155-1.99 3.745-4.92 3.745-8.675z"/>
+                        <path fill="#FBBC05" d="M5.527 14.259A7.19 7.19 0 0 1 5.15 12c0-.785.137-1.547.377-2.259L1.833 6.875A11.96 11.96 0 0 0 .6 12c0 1.935.463 3.765 1.233 5.125l3.694-2.866z"/>
+                        <path fill="#34A853" d="M12 23.4c3.24 0 5.96-1.073 7.947-2.905l-3.685-2.86c-1.075.72-2.45 1.15-4.262 1.15-3.028 0-5.598-2.11-6.473-4.941l-3.694 2.866C3.702 20.847 7.547 23.4 12 23.4z"/>
+                    </svg>
+                    <span>เข้าสู่ระบบด้วย Google</span>
+                </button>
+
+                <div class="relative flex py-2 items-center mb-5">
+                    <div class="flex-grow border-t border-slate-200"></div>
+                    <span class="shrink mx-3 text-xs font-medium text-slate-400">หรือใช้อีเมลส่วนตัว</span>
+                    <div class="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                <!-- แท็บสลับ เข้าสู่ระบบ / สมัครสมาชิกใหม่ -->
+                <div class="grid grid-cols-2 gap-2 bg-peach-50 p-1.5 rounded-2xl mb-4 border border-peach-100">
+                    <button type="button" id="auth-tab-login" onclick="switchAuthTab('login')" class="btn-bounce py-2.5 rounded-xl text-sm font-bold bg-peach-500 text-white shadow-xs">
+                        🔑 เข้าสู่ระบบ
+                    </button>
+                    <button type="button" id="auth-tab-register" onclick="switchAuthTab('register')" class="btn-bounce py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/70">
+                        ✨ สมัครสมาชิกใหม่
+                    </button>
+                </div>
+
+                <!-- กล่องแสดงข้อความผิดพลาด / แจ้งเตือนในหน้าล็อคอิน -->
+                <div id="auth-error-box" class="hidden mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs sm:text-sm text-rose-700 font-medium"></div>
+
+                <!-- ฟอร์มเข้าสู่ระบบ / สมัครสมาชิก -->
+                <form id="auth-form" onsubmit="handleEmailAuthSubmit(event)" class="space-y-3.5">
+                    <div id="auth-name-field" class="hidden">
+                        <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1">ชื่อเล่นหรือชื่อที่อยากให้เรียก</label>
+                        <input type="text" id="auth-name-input" placeholder="เช่น น้องพลอย, พี่ต้น" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base focus:outline-none focus:border-peach-400">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs sm:text-sm font-bold text-slate-700 mb-1">อีเมล (Email)</label>
+                        <input type="email" id="auth-email-input" required placeholder="name@example.com" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base focus:outline-none focus:border-peach-400">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs sm:text-sm font-bold text-slate-700">รหัสผ่าน (Password)</label>
+                            <button type="button" id="btn-forgot-password" onclick="handlePasswordReset()" class="text-xs font-semibold text-peach-600 hover:underline">
+                                ลืมรหัสผ่าน?
+                            </button>
+                        </div>
+                        <input type="password" id="auth-password-input" required minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base focus:outline-none focus:border-peach-400">
+                    </div>
+
+                    <button type="submit" id="btn-auth-submit" class="btn-bounce w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-peach-500 to-amber-500 hover:from-peach-600 hover:to-amber-600 text-white font-bold text-base shadow-md shadow-peach-500/20 mt-2">
+                        เข้าสู่กระปุกออมเงินของฉัน 🚀
+                    </button>
+                </form>
+
+                <!-- ปุ่มทดลองใช้งานแบบไม่ล็อคอิน (Guest Mode) -->
+                <div class="mt-5 pt-4 border-t border-slate-100 text-center">
+                    <button type="button" onclick="enterGuestMode()" class="btn-bounce w-full py-2.5 px-4 rounded-2xl bg-cream-100 hover:bg-cream-200 border border-amber-200 text-slate-700 text-xs sm:text-sm font-semibold flex items-center justify-center gap-2">
+                        <span>🧸</span>
+                        <span>ทดลองใช้งานแบบไม่ล็อคอิน (เก็บชั่วคราวในเครื่องนี้)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- หน้าจอหลักของแอปพลิเคชัน StepSave (แสดงเมื่อล็อคอินหรือเข้า Guest Mode) -->
+    <!-- ===================================================================== -->
+    <div id="main-app-screen" class="hidden">
+
+    <!-- Header ด้านบนสีขาวอบอุ่น -->
+    <header class="bg-white/95 backdrop-blur-md border-b-2 border-peach-100 sticky top-0 z-40 shadow-xs">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6">
+            <div class="flex flex-wrap justify-between items-center py-3 gap-3">
+                <!-- โลโก้และชื่อแบรนด์ -->
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-peach-400 to-amber-400 flex items-center justify-center text-white text-2xl shadow-md shadow-peach-400/25">
+                        🐷
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-cute font-bold text-2xl tracking-tight text-slate-800">Step<span class="text-peach-500">Save</span></span>
+                            <span id="sync-status-badge" class="text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full">☁️ ซิงก์บัญชีแล้ว</span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-slate-500">ผู้ช่วยเก็บเงินและวางแผนเป้าหมายแสนอบอุ่น</p>
+                    </div>
+                </div>
+
+                <!-- แถบข้อมูลโปรไฟล์ผู้ใช้ + ปุ่มเครื่องมือ -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- การ์ดโปรไฟล์ผู้ใช้ -->
+                    <div class="flex items-center gap-2.5 bg-peach-50/90 border border-peach-200 px-3 py-1.5 rounded-2xl">
+                        <img id="user-avatar-img" src="https://placehold.co/64x64/FFD9C2/FF7034?text=🐷" onerror="this.src='https://placehold.co/64x64/FFD9C2/FF7034?text=🐷'" alt="รูปโปรไฟล์" class="w-8 h-8 rounded-full object-cover border border-peach-300 bg-white">
+                        <div class="leading-tight max-w-[130px] sm:max-w-[180px]">
+                            <div id="user-display-name" class="text-xs sm:text-sm font-bold text-slate-800 truncate">ผู้ใช้งาน</div>
+                            <div id="user-display-email" class="text-[11px] text-slate-500 truncate">โหมดทดลองใช้งาน</div>
+                        </div>
+                    </div>
+
+                    <button onclick="exportTransactionsCSV()" class="btn-bounce text-xs sm:text-sm font-semibold text-skysoft-600 bg-skysoft-50 hover:bg-skysoft-100 border-2 border-skysoft-200 px-3 py-2 rounded-2xl flex items-center gap-1.5" title="ดาวน์โหลดประวัติเป็นไฟล์ Excel/CSV">
+                        <span>📄</span>
+                        <span class="hidden md:inline">ส่งออก CSV</span>
+                    </button>
+                    <button onclick="openSettingsModal()" class="btn-bounce text-xs sm:text-sm font-semibold text-slate-700 bg-cream-100 hover:bg-cream-200 border-2 border-amber-200/70 px-3 py-2 rounded-2xl flex items-center gap-1.5" title="ตั้งค่าเกณฑ์ออมอัตโนมัติ">
+                        <span>⚙️</span>
+                        <span class="hidden md:inline">ตั้งค่า</span>
+                    </button>
+                    <button onclick="openResetConfirmModal()" class="btn-bounce text-xs sm:text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 px-3 py-2 rounded-2xl flex items-center gap-1.5" title="ล้างข้อมูลเฉพาะบัญชีนี้ให้กลับเป็น 0">
+                        <span>🔄</span>
+                        <span class="hidden sm:inline">รีเซ็ต 0</span>
+                    </button>
+                    <button onclick="handleLogout()" id="btn-logout" class="btn-bounce text-xs sm:text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 px-3 py-2 rounded-2xl flex items-center gap-1.5" title="ออกจากระบบ / สลับบัญชี">
+                        <span>🚪</span>
+                        <span id="btn-logout-text">ออกจากระบบ</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- แถบเมนูนำทางขนาดใหญ่ เข้าใจง่าย ไม่รกสายตา -->
+            <nav class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 pt-1" aria-label="เมนูหลัก">
+                <button onclick="switchTab('all')" id="tab-all" class="btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-bold bg-peach-500 text-white shadow-sm flex items-center gap-1.5">
+                    <span>🏡</span> ภาพรวมทั้งหมด
+                </button>
+                <button onclick="switchTab('save')" id="tab-save" class="btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-semibold bg-peach-50 text-slate-700 hover:bg-peach-100 flex items-center gap-1.5">
+                    <span>🪙</span> หยอดกระปุกออมย่อย
+                </button>
+                <button onclick="switchTab('goals')" id="tab-goals" class="btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-semibold bg-peach-50 text-slate-700 hover:bg-peach-100 flex items-center gap-1.5">
+                    <span>🎯</span> กระปุกเป้าหมายชีวิต
+                </button>
+                <button onclick="switchTab('sim')" id="tab-sim" class="btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-semibold bg-peach-50 text-slate-700 hover:bg-peach-100 flex items-center gap-1.5">
+                    <span>🔮</span> ดูดวงเงินออมในอนาคต
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- เนื้อหาหลัก -->
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 pt-6 space-y-7">
+
+        <!-- ========================================================= -->
+        <!-- ส่วนที่ 1: กล่องสถานะปัจจุบัน & บันทึกรายรับ-รายจ่าย (แสดงตลอด) -->
+        <!-- ========================================================= -->
+        <section id="section-overview" class="space-y-6">
+            
+            <!-- กล่องคำแนะนำสั้นๆ ภาษาง่ายๆ คอยบอกสถานะปัจจุบันของกระเป๋าเงิน -->
+            <div id="friendly-advisor-banner" class="rounded-3xl p-5 bg-gradient-to-r from-cream-100 via-peach-100 to-mint-100 border-2 border-peach-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div id="advisor-mascot" class="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center text-3xl shrink-0">
+                        🐢
+                    </div>
+                    <div>
+                        <div class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-white/80 text-peach-600 mb-1" id="advisor-mode-pill">
+                            โหมดประคองตัว (ออมเบาๆ ครึ่งเดียว 0.5x)
+                        </div>
+                        <h2 class="font-cute font-bold text-lg sm:text-xl text-slate-800" id="advisor-headline">
+                            ช่วงนี้เริ่มต้นใหม่ ค่อยๆ เก็บทีละนิดนะ!
+                        </h2>
+                        <p class="text-sm text-slate-600 mt-0.5" id="advisor-message">
+                            ตอนนี้เงินในกระเป๋าหลักยังน้อย ระบบเลยช่วยลดยอดหักออมอัตโนมัติให้ครึ่งหนึ่ง จะได้ไม่ตึงมือครับ
+                        </p>
+                    </div>
+                </div>
+
+                <!-- ปุ่มสลับโหมดออมด้วยตัวเองแบบเข้าใจง่าย -->
+                <div class="flex flex-col gap-1.5 w-full sm:w-auto shrink-0 bg-white/80 p-3 rounded-2xl border border-peach-200/80">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-bold text-slate-700">ปรับจังหวะออมอัตโนมัติ</span>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="auto-throttle-toggle" class="sr-only peer" checked onchange="toggleAutoThrottle()">
+                            <div class="relative w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-mint-500"></div>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 mt-1">
+                        <button type="button" onclick="setThrottleMode('shield')" id="btn-mode-shield" class="btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 text-slate-900">
+                            🐢 เบาๆ
+                        </button>
+                        <button type="button" onclick="setThrottleMode('normal')" id="btn-mode-normal" class="btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600">
+                            🚶 ปกติ
+                        </button>
+                        <button type="button" onclick="setThrottleMode('boost')" id="btn-mode-boost" class="btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600">
+                            🚀 เร่งออม
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- การ์ดตัวเลขสำคัญ 3 ใบใหญ่ มองปุ๊บเข้าใจปั๊บ -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <!-- ใบที่ 1: เงินใช้จ่ายในกระเป๋าหลัก -->
+                <div class="cute-card p-6 bg-gradient-to-br from-white to-skysoft-50 border-skysoft-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-bold text-skysoft-600 bg-skysoft-100 px-3 py-1 rounded-full">👛 กระเป๋าเงินใช้จ่ายหลัก</span>
+                        <span class="text-2xl">💳</span>
+                    </div>
+                    <div class="text-3xl sm:text-4xl font-bold text-slate-800 my-2" id="main-balance-display">฿0.00</div>
+                    <p class="text-xs sm:text-sm text-slate-500">เงินสดคงเหลือพร้อมใช้ในชีวิตประจำวัน</p>
+                </div>
+
+                <!-- ใบที่ 2: กระปุกพักเงินรอส่งลงทุน -->
+                <div class="cute-card p-6 bg-gradient-to-br from-white to-peach-50 border-peach-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-bold text-peach-600 bg-peach-100 px-3 py-1 rounded-full">🐷 กระปุกพักเงินออมย่อย</span>
+                        <span class="text-2xl">🪙</span>
+                    </div>
+                    <div class="text-3xl sm:text-4xl font-bold text-peach-600 my-2" id="sweep-wallet-summary">฿0.00</div>
+                    <p class="text-xs sm:text-sm text-slate-500" id="sweep-card-hint">สะสมครบ ฿500 จะย้ายเข้าเป้าหมายอัตโนมัติ</p>
+                </div>
+
+                <!-- ใบที่ 3: เงินออมและลงทุนรวมทั้งหมด -->
+                <div class="cute-card p-6 bg-gradient-to-br from-white to-mint-50 border-mint-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-bold text-mint-600 bg-mint-100 px-3 py-1 rounded-full">🌳 เงินเก็บเพื่ออนาคตรวม</span>
+                        <span class="text-2xl">✨</span>
+                    </div>
+                    <div class="text-3xl sm:text-4xl font-bold text-mint-600 my-2" id="total-wealth-display">฿0.00</div>
+                    <p class="text-xs sm:text-sm text-slate-500" id="wealth-sub-summary">รวมเงินในกระปุกพักเงิน + ทุกเป้าหมาย</p>
+                </div>
+            </div>
+
+            <!-- กล่องบันทึกรายรับ - รายจ่ายจริง (ปุ่มใหญ่ แยกสีเขียว/ส้มแดงชัดเจน) -->
+            <div class="cute-card p-6">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h3 class="font-cute font-bold text-lg sm:text-xl text-slate-800 flex items-center gap-2">
+                            <span>📝</span> จดรายรับ - รายจ่ายในกระเป๋าหลัก
+                        </h3>
+                        <p class="text-sm text-slate-500">เลือกปุ่มสีเขียวเมื่อมีเงินเข้า หรือปุ่มสีแดงอ่อนเมื่อจ่ายเงินออก</p>
+                    </div>
+                    <!-- ปุ่มลัดเติมตัวเลขไวๆ -->
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="quickFillCashflow(15000, 'income', 'เงินเดือนเข้า')" class="btn-bounce text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-xl bg-mint-50 text-mint-600 border border-mint-200 hover:bg-mint-100">
+                            + เงินเดือน 15,000
+                        </button>
+                        <button type="button" onclick="quickFillCashflow(1000, 'income', 'รายได้พิเศษ')" class="btn-bounce text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-xl bg-mint-50 text-mint-600 border border-mint-200 hover:bg-mint-100">
+                            + รายได้เสริม 1,000
+                        </button>
+                        <button type="button" onclick="quickFillCashflow(300, 'expense', 'ค่าอาหาร/ของใช้')" class="btn-bounce text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100">
+                            - ค่าใช้จ่าย 300
+                        </button>
+                    </div>
+                </div>
+
+                <form onsubmit="handleCashflowSubmit(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <!-- ปุ่มสลับประเภทรายการขนาดใหญ่ แยกสีชัดเจน -->
+                    <div class="sm:col-span-4 grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl">
+                        <input type="hidden" id="cf-type-input" value="income">
+                        <button type="button" id="btn-cf-income" onclick="selectCashflowType('income')" class="btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-mint-500 text-white shadow-xs flex items-center justify-center gap-1.5">
+                            <span>➕</span> รายรับเข้า
+                        </button>
+                        <button type="button" id="btn-cf-expense" onclick="selectCashflowType('expense')" class="btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5">
+                            <span>➖</span> รายจ่ายออก
+                        </button>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <input type="number" id="cf-amount-input" required min="1" step="any" placeholder="ใส่จำนวนเงิน (บาท)" class="w-full h-full px-4 py-3 rounded-2xl border-2 border-slate-200 bg-white text-base font-semibold focus:outline-none focus:border-peach-400">
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <input type="text" id="cf-note-input" required placeholder="เช่น เงินเดือน, ค่ากับข้าว" class="w-full h-full px-4 py-3 rounded-2xl border-2 border-slate-200 bg-white text-base focus:outline-none focus:border-peach-400">
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <button type="submit" id="btn-cf-submit" class="btn-bounce w-full h-full py-3 px-4 bg-mint-500 hover:bg-mint-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5">
+                            <span>💾</span> บันทึก
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- ส่วนที่ 2: หยอดกระปุกออมย่อย + กระปุกเป้าหมายชีวิต            -->
+        <!-- ========================================================= -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- คอลัมน์ซ้าย: หยอดกระปุกออมย่อย & ประวัติล่าสุด (5 คอลัมน์) -->
+            <div id="section-save" class="lg:col-span-5 space-y-6">
+                <div class="cute-card p-6 space-y-6">
+                    <!-- หัวข้อกระปุกพักเงิน -->
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <div class="flex items-center gap-2.5">
+                                <span class="text-3xl">🐷</span>
+                                <div>
+                                    <h2 class="font-cute font-bold text-lg sm:text-xl text-slate-800">กระปุกพักเงินออมย่อย</h2>
+                                    <p class="text-xs sm:text-sm text-slate-500">รวบรวมเศษเงินเล็กๆ ก่อนส่งเข้าเป้าหมายใหญ่</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- หลอดความคืบหน้ากระปุกพักเงิน -->
+                        <div class="bg-peach-50 rounded-2xl p-4 border-2 border-peach-200/80">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm font-bold text-slate-700">ยอดสะสมในกระปุกนี้</span>
+                                <span class="text-sm font-bold text-peach-600" id="sweep-percent-text">0% (เป้าหมาย ฿500)</span>
+                            </div>
+                            <div class="w-full bg-white rounded-full h-4 p-0.5 border border-peach-200 overflow-hidden">
+                                <div id="sweep-progress-bar" class="bg-gradient-to-r from-peach-400 to-amber-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                            <div class="mt-3.5 flex flex-wrap items-center justify-between gap-2">
+                                <label class="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-slate-700 cursor-pointer">
+                                    <input type="checkbox" id="auto-sweep-checkbox" checked onchange="saveState()" class="w-4 h-4 rounded text-peach-500 focus:ring-peach-400">
+                                    <span>ส่งเข้าเป้าหมายอัตโนมัติเมื่อครบเกณฑ์</span>
+                                </label>
+                                <button onclick="sweepToGoalsNow(false)" id="btn-manual-sweep" disabled class="btn-bounce px-4 py-2 bg-mint-500 hover:bg-mint-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs flex items-center gap-1.5">
+                                    <span>🚀</span> ส่งเข้าเป้าหมายทันที
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- เครื่องมือปัดเศษเงินทอนจากการซื้อของ -->
+                    <div class="bg-cream-50 rounded-2xl p-4 border-2 border-amber-200/70">
+                        <h3 class="font-cute font-bold text-base text-slate-800 mb-1 flex items-center gap-1.5">
+                            <span>🧮</span> ปัดเศษเงินทอนเข้ากระปุก (Round-up)
+                        </h3>
+                        <p class="text-xs text-slate-500 mb-3">เช่น ซื้อของ 65 บาท ปัดเต็ม 10 บาท ระบบจะเก็บเงินทอน 5 บาทให้ทันที (ถ้าลงท้ายพอดีจะไม่ปัดเพิ่ม)</p>
+                        
+                        <form onsubmit="handleRoundUpSubmit(event)" class="space-y-3">
+                            <div class="grid grid-cols-12 gap-2">
+                                <div class="col-span-5">
+                                    <input type="number" id="ru-spend-input" required min="1" step="any" oninput="previewRoundUp()" placeholder="ยอดที่ซื้อ (฿)" class="w-full px-3.5 py-2.5 rounded-xl border-2 border-amber-200 bg-white text-sm font-semibold focus:outline-none focus:border-peach-400">
+                                </div>
+                                <div class="col-span-4">
+                                    <select id="ru-unit-select" onchange="previewRoundUp()" class="w-full px-2.5 py-2.5 rounded-xl border-2 border-amber-200 bg-white text-xs sm:text-sm font-semibold focus:outline-none focus:border-peach-400">
+                                        <option value="10">ปัดเต็ม 10 ฿</option>
+                                        <option value="50">ปัดเต็ม 50 ฿</option>
+                                        <option value="100">ปัดเต็ม 100 ฿</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-3">
+                                    <button type="submit" id="btn-ru-submit" class="btn-bounce w-full h-full py-2.5 bg-mint-500 hover:bg-mint-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl shadow-xs">
+                                        ออมเลย
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="text-xs font-medium text-peach-600 bg-white px-3 py-2 rounded-xl border border-amber-100" id="ru-preview-text">
+                                💡 ลองกรอกยอดซื้อด้านบน ระบบจะคำนวณเงินทอนให้อัตโนมัติ
+                            </div>
+                            <label class="inline-flex items-center gap-2 text-xs text-slate-600 cursor-pointer px-1">
+                                <input type="checkbox" id="ru-deduct-spend" class="w-4 h-4 rounded text-peach-500">
+                                <span>หักค่าซื้อของออกจากกระเป๋าหลักด้วยเลย</span>
+                            </label>
+                        </form>
+                    </div>
+
+                    <!-- ปุ่มออมตามความดี/พฤติกรรมประจำวัน -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 class="font-cute font-bold text-base text-slate-800 flex items-center gap-1.5">
+                                    <span>🌟</span> ปุ่มออมตามพฤติกรรมดีๆ
+                                </h3>
+                                <p class="text-xs text-slate-500">ทำเรื่องดีๆ วันนี้ กดปุ่มเพื่อหยอดกระปุกได้เลย</p>
+                            </div>
+                            <button onclick="openHabitModal()" class="btn-bounce text-xs font-bold text-mint-600 bg-mint-50 hover:bg-mint-100 border border-mint-200 px-3 py-1.5 rounded-xl">
+                                + เพิ่มปุ่มเอง
+                            </button>
+                        </div>
+                        <div id="habit-rules-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <!-- ปุ่มกฎการออมจะถูกเรนเดอร์ที่นี่ -->
+                        </div>
+                    </div>
+
+                    <!-- ประวัติรายการล่าสุด -->
+                    <div class="pt-4 border-t-2 border-peach-50">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="font-cute font-bold text-base text-slate-800 flex items-center gap-1.5">
+                                <span>📜</span> สมุดบันทึกความเคลื่อนไหว
+                            </h4>
+                            <span class="text-xs text-slate-400" id="activity-count-badge">0 รายการ</span>
+                        </div>
+                        <div id="activity-log-list" class="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                            <!-- รายการประวัติจะถูกสร้างผ่าน JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- คอลัมน์ขวา: กระปุกเป้าหมายชีวิต Dynamic Goal Buckets (7 คอลัมน์) -->
+            <div id="section-goals" class="lg:col-span-7 cute-card p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 class="font-cute font-bold text-xl text-slate-800 flex items-center gap-2">
+                                <span>🎯</span> กระปุกเป้าหมายชีวิตของฉัน
+                            </h2>
+                            <p class="text-sm text-slate-500 mt-0.5">แบ่งเงินออมใส่แต่ละกระปุกตามความฝัน เติมเพิ่มหรือถอนใช้ยามจำเป็นได้ตลอด</p>
+                        </div>
+                        <button onclick="openAddGoalModal()" class="btn-bounce px-4 py-2.5 bg-skysoft-500 hover:bg-skysoft-600 text-white text-sm font-bold rounded-2xl shadow-sm flex items-center gap-1.5">
+                            <span>➕</span> สร้างเป้าหมายใหม่
+                        </button>
+                    </div>
+
+                    <!-- แถบตรวจสอบสัดส่วนการแบ่งเงินรวม 100% -->
+                    <div id="allocation-status-bar" class="mb-5 p-3.5 rounded-2xl bg-skysoft-50/80 border-2 border-skysoft-100 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 text-sm">
+                            <span class="font-bold text-slate-700">สัดส่วนแบ่งเงินออมรวมทุกกระปุก:</span>
+                            <span id="total-allocation-badge" class="font-bold px-3 py-0.5 rounded-full bg-mint-100 text-mint-600">100%</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="allocation-warning-text" class="text-xs sm:text-sm text-slate-600">แบ่งสัดส่วนครบ 100% พอดีเป๊ะ! ✨</span>
+                            <button onclick="normalizeAllocations()" id="btn-normalize-alloc" class="hidden btn-bounce text-xs font-bold bg-peach-500 text-white px-3 py-1 rounded-xl">
+                                ปรับให้ครบ 100% ให้อัตโนมัติ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- รายการเป้าหมายการเงิน -->
+                    <div id="goals-container" class="space-y-4">
+                        <!-- การ์ดเป้าหมายแต่ละรายการจะถูกเรนเดอร์ที่นี่ -->
+                    </div>
+                </div>
+
+                <!-- คำอธิบายเพิ่มเติมภาษาง่ายๆ ด้านล่าง -->
+                <div class="mt-6 pt-4 border-t-2 border-peach-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs sm:text-sm text-slate-500">
+                    <div class="flex items-center gap-2">
+                        <span>🛡️</span>
+                        <span>ระบบช่วยดูแลและกระจายเงินออมให้ตามระดับความเสี่ยงที่เหมาะสม</span>
+                    </div>
+                    <span class="font-semibold text-skysoft-600">ผลตอบแทนเฉลี่ยคาดหวัง: <strong id="weighted-return-display">0.0% / ปี</strong></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- ส่วนที่ 3: ดูดวงเงินออมในอนาคต (Interactive What-If Simulator) -->
+        <!-- ========================================================= -->
+        <section id="section-sim" class="cute-card p-6 bg-gradient-to-br from-white via-white to-skysoft-50/50">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div>
+                    <span class="text-xs font-bold text-skysoft-600 bg-skysoft-100 px-3 py-1 rounded-full">🔮 เครื่องมือจำลองอนาคตแสนสนุก</span>
+                    <h2 class="font-cute font-bold text-xl sm:text-2xl text-slate-800 mt-2">ถ้าออมวันละนิด อีกไม่กี่ปีจะมีเงินก้อนเท่าไหร่?</h2>
+                    <p class="text-sm text-slate-500 mt-0.5">ลองเลื่อนแถบสีส้มด้านล่างเพื่อดูพลังของเงินออมและการงอกเงยของดอกผล</p>
+                </div>
+                
+                <!-- กล่องแสดงตัวเลขผลลัพธ์ในอนาคต -->
+                <div class="bg-gradient-to-r from-peach-100 to-cream-100 border-2 border-peach-200 rounded-3xl p-4 sm:p-5 flex items-center gap-4 shrink-0">
+                    <div class="w-14 h-14 rounded-2xl bg-white text-3xl flex items-center justify-center shrink-0 shadow-xs">
+                        🎁
+                    </div>
+                    <div>
+                        <div class="text-xs sm:text-sm font-semibold text-slate-600" id="sim-horizon-label">เงินก้อนคาดการณ์ในอีก 10 ปีข้างหน้า</div>
+                        <div class="text-2xl sm:text-3xl font-bold text-peach-600" id="sim-future-total">฿0</div>
+                        <div class="text-xs font-medium text-mint-600 mt-0.5" id="sim-starting-note">
+                            เริ่มนับจากเงินเก็บจริงวันนี้: ฿0.00
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                <!-- แผงควบคุม Sliders (5 คอลัมน์) -->
+                <div class="lg:col-span-5 space-y-5 bg-peach-50/60 p-5 rounded-3xl border-2 border-peach-100">
+                    
+                    <!-- สวิตช์เริ่มคำนวณจากยอดเงินออมจริง -->
+                    <div class="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-peach-200/70">
+                        <div>
+                            <div class="text-sm font-bold text-slate-800">นับรวมเงินเก็บจริงที่มีวันนี้ด้วย</div>
+                            <div class="text-xs text-slate-500" id="sim-actual-wealth-text">เงินเก็บจริงวันนี้: ฿0.00</div>
+                        </div>
+                        <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="sim-use-actual-toggle" checked onchange="updateSimulator()" class="sr-only peer">
+                            <div class="relative w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-mint-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- Slider 1: เงินออมย่อยต่อวัน -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label for="sim-daily-slider" class="text-sm font-bold text-slate-700">
+                                🪙 ตั้งใจออมเพิ่มวันละ
+                            </label>
+                            <span class="text-sm font-bold text-peach-600 bg-white px-3 py-1 rounded-xl border border-peach-200" id="sim-daily-val">฿50 / วัน</span>
+                        </div>
+                        <input type="range" id="sim-daily-slider" min="0" max="500" step="10" value="50" class="w-full" oninput="updateSimulator()">
+                        <div class="flex justify-between text-xs text-slate-400 mt-1">
+                            <span>฿0/วัน</span>
+                            <span>฿250/วัน</span>
+                            <span>฿500/วัน</span>
+                        </div>
+                    </div>
+
+                    <!-- Slider 2: ผลตอบแทนคาดหวังต่อปี -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label for="sim-return-slider" class="text-sm font-bold text-slate-700">
+                                🌱 ดอกผลงอกเงยเฉลี่ยต่อปี
+                            </label>
+                            <span class="text-sm font-bold text-skysoft-600 bg-white px-3 py-1 rounded-xl border border-skysoft-200" id="sim-return-val">5.5% / ปี</span>
+                        </div>
+                        <input type="range" id="sim-return-slider" min="0" max="12" step="0.5" value="5.5" class="w-full" oninput="updateSimulator()">
+                        <div class="flex justify-between text-xs text-slate-400 mt-1">
+                            <span>ฝากออมทรัพย์ (0-2%)</span>
+                            <span>พอร์ตผสม (5-6%)</span>
+                            <span>เน้นเติบโต (8-12%)</span>
+                        </div>
+                    </div>
+
+                    <!-- Slider 3: ระยะเวลา (ปี) -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label for="sim-years-slider" class="text-sm font-bold text-slate-700">
+                                📅 ระยะเวลาที่ออมต่อเนื่อง
+                            </label>
+                            <span class="text-sm font-bold text-mint-600 bg-white px-3 py-1 rounded-xl border border-mint-200" id="sim-years-val">10 ปี</span>
+                        </div>
+                        <input type="range" id="sim-years-slider" min="1" max="30" step="1" value="10" class="w-full" oninput="updateSimulator()">
+                    </div>
+
+                    <!-- เปรียบเทียบเงินต้น vs ดอกผล -->
+                    <div class="pt-3 border-t border-peach-200/70 grid grid-cols-2 gap-3">
+                        <div class="bg-white p-3.5 rounded-2xl border border-slate-100">
+                            <div class="text-xs text-slate-500">เงินที่เราหยอดเองทั้งหมด</div>
+                            <div class="text-base font-bold text-slate-800 mt-0.5" id="sim-principal-total">฿0</div>
+                        </div>
+                        <div class="bg-white p-3.5 rounded-2xl border border-mint-200">
+                            <div class="text-xs text-mint-600 font-medium">ดอกผลที่งอกเงยแถมให้ ✨</div>
+                            <div class="text-base font-bold text-mint-600 mt-0.5" id="sim-interest-total">+฿0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- กราฟแสดงการเติบโต (7 คอลัมน์) -->
+                <div class="lg:col-span-7 bg-white p-4 rounded-3xl border border-slate-100">
+                    <div class="relative h-[320px] sm:h-[360px] w-full">
+                        <canvas id="wealthGrowthChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ========================================== -->
+    <!-- MODALS หน้าต่างป๊อปอัปน่ารัก ใช้งานง่ายทุกวัย -->
+    <!-- ========================================== -->
+
+    <!-- 1. Modal เพิ่ม/แก้ไขเป้าหมายใหม่ -->
+    <div id="add-goal-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-peach-200">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-cute text-xl font-bold text-slate-800 flex items-center gap-2" id="goal-modal-title">
+                    <span>🎯</span> สร้างกระปุกเป้าหมายใหม่
+                </h3>
+                <button onclick="closeAddGoalModal()" class="text-slate-400 hover:text-slate-600 w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="new-goal-form" onsubmit="handleSaveGoal(event)" class="space-y-4">
+                <input type="hidden" id="goal-edit-id" value="">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">ชื่อเป้าหมายที่อยากเก็บเงิน</label>
+                    <input type="text" id="goal-name-input" required placeholder="เช่น ซื้อบ้าน, เที่ยวญี่ปุ่น, เงินสำรองยามป่วย" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base focus:outline-none focus:border-peach-400">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">ยอดเงินเป้าหมาย (฿)</label>
+                        <input type="number" id="goal-target-input" required min="100" step="any" placeholder="50000" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-semibold focus:outline-none focus:border-peach-400">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">แบ่งเงินออมให้ (%)</label>
+                        <input type="number" id="goal-alloc-input" required min="0" max="100" value="20" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-semibold focus:outline-none focus:border-peach-400">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">สไตล์การเก็บและต่อยอดเงิน</label>
+                    <select id="goal-risk-input" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-sm font-medium focus:outline-none focus:border-peach-400 bg-white">
+                        <option value="low">🛡️ เน้นปลอดภัย เงินต้นไม่หาย (ดอกผล ~2.5%/ปี)</option>
+                        <option value="medium" selected>⚖️ สมดุล ค่อยๆ เติบโต (ดอกผล ~5.5%/ปี)</option>
+                        <option value="high">🚀 เน้นเติบโตระยะยาว (ดอกผล ~8.5%/ปี)</option>
+                    </select>
+                </div>
+
+                <div class="pt-3 flex justify-end gap-2">
+                    <button type="button" onclick="closeAddGoalModal()" class="btn-bounce px-5 py-3 rounded-2xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">ยกเลิก</button>
+                    <button type="submit" class="btn-bounce px-6 py-3 rounded-2xl text-sm font-bold bg-mint-500 hover:bg-mint-600 text-white shadow-sm">บันทึกเป้าหมาย</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. Modal เติมเงินตรง / ถอนเงินจากเป้าหมาย -->
+    <div id="goal-transfer-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-peach-200">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-cute text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <span>💸</span> เติมเงินหรือถอนเงินเป้าหมาย
+                </h3>
+                <button onclick="closeGoalTransferModal()" class="text-slate-400 hover:text-slate-600 w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="bg-peach-50 p-4 rounded-2xl border border-peach-200 mb-4 text-sm space-y-1.5">
+                <div class="font-bold text-slate-800 text-base" id="gt-goal-name">ชื่อเป้าหมาย</div>
+                <div class="flex justify-between text-slate-600">
+                    <span>เงินที่เก็บได้ในกระปุกนี้:</span>
+                    <span class="font-bold text-peach-600" id="gt-goal-current">฿0.00</span>
+                </div>
+                <div class="flex justify-between text-slate-600">
+                    <span>เงินคงเหลือในกระเป๋าหลัก:</span>
+                    <span class="font-bold text-mint-600" id="gt-main-balance">฿0.00</span>
+                </div>
+            </div>
+
+            <form onsubmit="handleGoalTransferSubmit(event)" class="space-y-4">
+                <input type="hidden" id="gt-goal-id">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">ต้องการทำรายการอะไร?</label>
+                    <select id="gt-action-select" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-sm font-semibold focus:outline-none focus:border-peach-400 bg-white">
+                        <option value="deposit">➕ เติมเงินเพิ่ม (จากกระเป๋าหลัก ➔ เข้ากระปุกเป้าหมาย)</option>
+                        <option value="withdraw">➖ ถอนเงินออกมาใช้ (จากกระปุกเป้าหมาย ➔ กลับกระเป๋าหลัก)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">จำนวนเงิน (บาท)</label>
+                    <input type="number" id="gt-amount-input" required min="1" step="any" placeholder="ใส่จำนวนเงินที่ต้องการ" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-bold focus:outline-none focus:border-peach-400">
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeGoalTransferModal()" class="btn-bounce px-5 py-3 rounded-2xl text-sm font-bold text-slate-600 bg-slate-100">ยกเลิก</button>
+                    <button type="submit" class="btn-bounce px-6 py-3 rounded-2xl text-sm font-bold bg-peach-500 hover:bg-peach-600 text-white shadow-sm">ยืนยันรายการ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. Modal เพิ่มกฎการออมตามพฤติกรรม -->
+    <div id="habit-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-mint-200">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-cute text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <span>🌟</span> สร้างปุ่มออมตามพฤติกรรม
+                </h3>
+                <button onclick="closeHabitModal()" class="text-slate-400 hover:text-slate-600 w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form onsubmit="handleAddHabitRule(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">ชื่อกิจกรรมดีๆ ที่ทำ</label>
+                    <input type="text" id="habit-title-input" required placeholder="เช่น ทำกับข้าวกินเอง, งดน้ำหวาน" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base focus:outline-none focus:border-mint-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">หยอดกระปุกครั้งละ (฿)</label>
+                        <input type="number" id="habit-amount-input" required min="1" step="any" placeholder="50" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-bold focus:outline-none focus:border-mint-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">เลือกรูปน่ารักๆ</label>
+                        <select id="habit-icon-input" class="w-full px-3 py-3 rounded-2xl border-2 border-slate-200 text-base bg-white focus:outline-none focus:border-mint-500">
+                            <option value="☕">☕ งดกาแฟ/น้ำหวาน</option>
+                            <option value="🍱">🍱 ทำอาหารทานเอง</option>
+                            <option value="🚶">🚶 เดินออกกำลังกาย</option>
+                            <option value="🛍️">🛍️ งดช้อปปิ้ง</option>
+                            <option value="🐷">🐷 หยอดกระปุกทั่วไป</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeHabitModal()" class="btn-bounce px-5 py-3 rounded-2xl text-sm font-bold text-slate-600 bg-slate-100">ยกเลิก</button>
+                    <button type="submit" class="btn-bounce px-6 py-3 rounded-2xl text-sm font-bold bg-mint-500 hover:bg-mint-600 text-white shadow-sm">สร้างปุ่มเลย</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 4. Modal ตั้งค่าเกณฑ์สภาพคล่องและ Sweep Wallet -->
+    <div id="settings-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-amber-200">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-cute text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <span>⚙️</span> ตั้งค่าเกณฑ์ช่วยออมอัตโนมัติ
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600 w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form onsubmit="handleSaveSettings(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">เมื่อกระปุกพักเงินครบกี่บาท ให้ส่งเข้าเป้าหมายอัตโนมัติ?</label>
+                    <input type="number" id="set-sweep-threshold" required min="10" step="10" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-bold focus:outline-none focus:border-peach-400">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">ถ้าเงินในกระเป๋าหลักต่ำกว่ากี่บาท ให้เปิดโหมดประหยัด (0.5x)?</label>
+                    <input type="number" id="set-low-threshold" required min="0" step="500" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-bold focus:outline-none focus:border-peach-400">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">ถ้าเงินในกระเป๋าหลักสูงกว่ากี่บาท ให้เปิดโหมดเร่งออม (1.5x)?</label>
+                    <input type="number" id="set-high-threshold" required min="1000" step="500" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-base font-bold focus:outline-none focus:border-peach-400">
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeSettingsModal()" class="btn-bounce px-5 py-3 rounded-2xl text-sm font-bold text-slate-600 bg-slate-100">ยกเลิก</button>
+                    <button type="submit" class="btn-bounce px-6 py-3 rounded-2xl text-sm font-bold bg-peach-500 hover:bg-peach-600 text-white shadow-sm">บันทึกการตั้งค่า</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 5. Modal ยืนยันการรีเซ็ตข้อมูลทั้งหมดเป็น 0 -->
+    <div id="reset-confirm-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border-2 border-rose-200 text-center">
+            <div class="w-16 h-16 rounded-full bg-rose-100 text-3xl flex items-center justify-center mx-auto mb-3">
+                🔄
+            </div>
+            <h3 class="font-cute text-xl font-bold text-slate-800">เริ่มนับ 0 ใหม่ทั้งหมดไหมครับ?</h3>
+            <p class="text-sm text-slate-500 mt-2 leading-relaxed">
+                ยอดเงินในกระเป๋าหลัก กระปุกพักเงิน ยอดในทุกเป้าหมาย และสมุดบันทึกทั้งหมดจะกลับเป็น 0 บาทเพื่อเริ่มต้นใหม่
+            </p>
+            <div class="mt-6 flex justify-center gap-3">
+                <button onclick="closeResetConfirmModal()" class="btn-bounce flex-1 py-3 rounded-2xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">ไม่ดีกว่า</button>
+                <button onclick="confirmResetAllToZero()" class="btn-bounce flex-1 py-3 rounded-2xl text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 shadow-sm">ยืนยันรีเซ็ตเป็น 0</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. Modal ซิงก์ข้อมูลจาก Guest Mode เมื่อล็อคอินเข้าบัญชี -->
+    <div id="guest-merge-modal" class="fixed inset-0 bg-slate-900/45 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-mint-200 text-center">
+            <div class="w-16 h-16 rounded-full bg-mint-100 text-3xl flex items-center justify-center mx-auto mb-3">
+                ☁️
+            </div>
+            <h3 class="font-cute text-xl font-bold text-slate-800">พบข้อมูลการออมในเครื่องนี้!</h3>
+            <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+                คุณมีข้อมูลที่ทดลองออมไว้ก่อนล็อคอิน ต้องการนำข้อมูลนั้นมาบันทึกใส่บัญชีนี้ หรือใช้ข้อมูลเดิมในบัญชีคลาวด์ของคุณครับ?
+            </p>
+            <div class="mt-6 flex flex-col sm:flex-row justify-center gap-3">
+                <button onclick="resolveGuestMerge(false)" class="btn-bounce flex-1 py-3 px-4 rounded-2xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200">
+                    ใช้ข้อมูลในบัญชีคลาวด์
+                </button>
+                <button onclick="resolveGuestMerge(true)" class="btn-bounce flex-1 py-3 px-4 rounded-2xl text-sm font-bold text-white bg-mint-500 hover:bg-mint-600 shadow-sm">
+                    นำข้อมูลในเครื่องมาซิงก์ ✨
+                </button>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- ปิด #main-app-screen -->
+
+    <!-- ===================================================================== -->
+    <!-- Firebase SDK (Authentication & Cloud Firestore)                       -->
+    <!-- ===================================================================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {
+            getAuth,
+            GoogleAuthProvider,
+            signInWithPopup,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            updateProfile,
+            sendPasswordResetEmail,
+            signOut,
+            onAuthStateChanged,
+            signInWithCustomToken
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            doc,
+            getDoc,
+            setDoc,
+            onSnapshot
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // เตรียมการเชื่อมต่อ Firebase จากสภาพแวดล้อม
+        let firebaseApp = null;
+        let auth = null;
+        let db = null;
+        let firebaseReady = false;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'stepsave-app';
+
+        try {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                const config = JSON.parse(__firebase_config);
+                firebaseApp = initializeApp(config);
+                auth = getAuth(firebaseApp);
+                db = getFirestore(firebaseApp);
+                firebaseReady = true;
+            }
+        } catch (err) {
+            console.warn('Firebase initialization skipped or failed:', err);
+        }
+
+        // เปิดเผย API ให้สคริปต์หลักเรียกใช้งาน
+        window.StepSaveCloud = {
+            isReady: () => firebaseReady,
+            getAuth: () => auth,
+            getDb: () => db,
+            getAppId: () => appId,
+            GoogleAuthProvider,
+            signInWithPopup,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            updateProfile,
+            sendPasswordResetEmail,
+            signOut,
+            onAuthStateChanged,
+            signInWithCustomToken,
+            doc,
+            getDoc,
+            setDoc,
+            onSnapshot
+        };
+
+        // แจ้งเตือนเมื่อโมดูล Firebase โหลดเสร็จ
+        window.dispatchEvent(new Event('stepsave-firebase-ready'));
+    </script>
+
+    <!-- JavaScript ควบคุมการทำงานทั้งหมดของแอปพลิเคชัน -->
+    <script>
+        const GUEST_STORAGE_KEY = 'stepsave_guest_v2';
+        let currentUser = null; // null = ยังไม่ล็อคอิน, { isGuest: true } = Guest Mode, หรือ Firebase User
+        let isGuestMode = false;
+        let authMode = 'login'; // 'login' | 'register'
+        let unsubscribeUserDoc = null;
+        let isApplyingRemoteSnapshot = false;
+        let pendingGuestDataForMerge = null;
+        let pendingCloudDataForMerge = null;
+        let cloudSaveTimer = null;
+
+        // ฟังก์ชันช่วยคำนวณทศนิยม 2 ตำแหน่งอย่างแม่นยำ ป้องกัน Floating-Point Error (เช่น 0.1 + 0.2)
+        function roundMoney(num) {
+            const val = Number(num);
+            if (!Number.isFinite(val)) return 0;
+            return Math.round((val + Number.EPSILON) * 100) / 100;
+        }
+
+        // ฟังก์ชันป้องกัน XSS เมื่อแสดงข้อความที่ผู้ใช้กรอก
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // ==========================================
+        // 1. สถานะเริ่มต้น (ค่าเงินทุกตัวเป็น 0 สำหรับใช้งานจริง)
+        // ==========================================
+        function getFreshZeroState() {
+            return {
+                mainBalance: 0,           // เงินคงเหลือในบัญชีหลักเริ่มต้น 0 บาท
+                sweepWallet: 0,           // กระเป๋าพักเงินเริ่มต้น 0 บาท
+                sweepThreshold: 500,      // เกณฑ์ขั้นต่ำในการส่งเข้าพอร์ตลงทุน
+                lowLiquidityThreshold: 3000,
+                highLiquidityThreshold: 15000,
+                throttleMode: 'shield',   // เริ่มที่โหมดประคองตัวเมื่อบัญชีหลักเป็น 0
+                autoThrottle: true,
+                autoSweep: true,
+                goals: [
+                    {
+                        id: 'goal-1',
+                        name: 'กระปุกฉุกเฉินอุ่นใจ 6 เดือน',
+                        risk: 'low',
+                        riskLabel: 'ปลอดภัย เงินต้นไม่หาย',
+                        expectedReturn: 2.5,
+                        current: 0,
+                        target: 30000,
+                        allocation: 40,
+                        emoji: '🛡️',
+                        color: 'mint'
+                    },
+                    {
+                        id: 'goal-2',
+                        name: 'กระปุกท่องเที่ยว / ซื้อของขวัญให้ตัวเอง',
+                        risk: 'medium',
+                        riskLabel: 'สมดุล ค่อยๆ งอกเงย',
+                        expectedReturn: 5.5,
+                        current: 0,
+                        target: 50000,
+                        allocation: 35,
+                        emoji: '✈️',
+                        color: 'peach'
+                    },
+                    {
+                        id: 'goal-3',
+                        name: 'กระปุกเกษียณสุขสบายระยะยาว',
+                        risk: 'high',
+                        riskLabel: 'เน้นเติบโตระยะยาว',
+                        expectedReturn: 8.5,
+                        current: 0,
+                        target: 100000,
+                        allocation: 25,
+                        emoji: '🏡',
+                        color: 'sky'
+                    }
+                ],
+                habitRules: [
+                    { id: 'h-1', title: 'งดกาแฟ / ชานม', amount: 60, emoji: '☕' },
+                    { id: 'h-2', title: 'งดสั่งเดลิเวอรี', amount: 100, emoji: '🍱' },
+                    { id: 'h-3', title: 'เดินแทนขึ้นรถ', amount: 25, emoji: '🚶' },
+                    { id: 'h-4', title: 'ออมวินัยรายวัน', amount: 50, emoji: '🐷' }
+                ],
+                activities: [] // เริ่มต้นประวัติว่างเปล่า
+            };
+        }
+
+        function sanitizeState(raw) {
+            const merged = { ...getFreshZeroState(), ...(raw || {}) };
+            merged.mainBalance = Math.max(0, roundMoney(merged.mainBalance));
+            merged.sweepWallet = Math.max(0, roundMoney(merged.sweepWallet));
+            merged.sweepThreshold = Math.max(10, roundMoney(merged.sweepThreshold || 500));
+            merged.lowLiquidityThreshold = Math.max(0, roundMoney(merged.lowLiquidityThreshold ?? 3000));
+            merged.highLiquidityThreshold = Math.max(merged.lowLiquidityThreshold + 100, roundMoney(merged.highLiquidityThreshold ?? 15000));
+            merged.goals = Array.isArray(merged.goals) ? merged.goals.map(g => ({
+                ...g,
+                current: Math.max(0, roundMoney(g.current)),
+                target: Math.max(1, roundMoney(g.target)),
+                allocation: Math.max(0, Math.min(100, Math.round(Number(g.allocation) || 0)))
+            })) : [];
+            merged.habitRules = Array.isArray(merged.habitRules) ? merged.habitRules : [];
+            merged.activities = Array.isArray(merged.activities) ? merged.activities : [];
+            return merged;
+        }
+
+        function loadGuestStateFromLocal() {
+            try {
+                const saved = localStorage.getItem(GUEST_STORAGE_KEY);
+                if (saved) {
+                    return sanitizeState(JSON.parse(saved));
+                }
+            } catch (e) {
+                console.error('Failed to load guest state:', e);
+            }
+            return getFreshZeroState();
+        }
+
+        function hasMeaningfulGuestData(guestState) {
+            if (!guestState) return false;
+            const hasGoalMoney = Array.isArray(guestState.goals) && guestState.goals.some(g => g.current > 0);
+            return guestState.mainBalance > 0 || guestState.sweepWallet > 0 || hasGoalMoney || (guestState.activities && guestState.activities.length > 0);
+        }
+
+        function saveState() {
+            const sweepCb = document.getElementById('auto-sweep-checkbox');
+            if (sweepCb) state.autoSweep = sweepCb.checked;
+
+            // บันทึกในโหมด Guest
+            if (isGuestMode || !currentUser || currentUser.isGuest) {
+                try {
+                    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(state));
+                } catch (e) {
+                    console.error('Failed to save guest state:', e);
+                }
+                return;
+            }
+
+            // บันทึกขึ้น Cloud Firestore แยกตามบัญชีผู้ใช้ (users/{uid})
+            if (isApplyingRemoteSnapshot) return;
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady() || !currentUser?.uid) return;
+
+            const badge = document.getElementById('sync-status-badge');
+            if (badge) {
+                badge.textContent = '⏳ กำลังบันทึก...';
+                badge.className = 'text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full';
+            }
+
+            clearTimeout(cloudSaveTimer);
+            cloudSaveTimer = setTimeout(async () => {
+                try {
+                    const db = cloud.getDb();
+                    const appId = cloud.getAppId();
+                    const userDocRef = cloud.doc(db, 'artifacts', appId, 'users', currentUser.uid, 'wallet', 'profileData');
+                    await cloud.setDoc(userDocRef, {
+                        ...sanitizeState(state),
+                        updatedAt: new Date().toISOString(),
+                        email: currentUser.email || '',
+                        displayName: currentUser.displayName || ''
+                    }, { merge: true });
+
+                    if (badge) {
+                        badge.textContent = '☁️ ซิงก์บัญชีแล้ว';
+                        badge.className = 'text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full';
+                    }
+                } catch (err) {
+                    console.error('Firestore save error:', err);
+                    if (badge) {
+                        badge.textContent = '⚠️ ซิงก์ขัดข้อง';
+                        badge.className = 'text-xs font-semibold bg-rose-100 text-rose-600 px-2.5 py-0.5 rounded-full';
+                    }
+                }
+            }, 250);
+        }
+
+        let state = getFreshZeroState();
+        let wealthChart = null;
+        let activeTab = 'all';
+
+        // ==========================================
+        // 1.5 ระบบ Authentication (Google, Email/Password, Reset, Guest)
+        // ==========================================
+        function switchAuthTab(mode) {
+            authMode = mode;
+            const tabLogin = document.getElementById('auth-tab-login');
+            const tabReg = document.getElementById('auth-tab-register');
+            const nameField = document.getElementById('auth-name-field');
+            const submitBtn = document.getElementById('btn-auth-submit');
+            const forgotBtn = document.getElementById('btn-forgot-password');
+            hideAuthError();
+
+            if (mode === 'login') {
+                tabLogin.className = 'btn-bounce py-2.5 rounded-xl text-sm font-bold bg-peach-500 text-white shadow-xs';
+                tabReg.className = 'btn-bounce py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/70';
+                nameField.classList.add('hidden');
+                forgotBtn.classList.remove('hidden');
+                submitBtn.textContent = 'เข้าสู่กระปุกออมเงินของฉัน 🚀';
+            } else {
+                tabReg.className = 'btn-bounce py-2.5 rounded-xl text-sm font-bold bg-mint-500 text-white shadow-xs';
+                tabLogin.className = 'btn-bounce py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/70';
+                nameField.classList.remove('hidden');
+                forgotBtn.classList.add('hidden');
+                submitBtn.textContent = 'สมัครสมาชิกและสร้างกระปุกส่วนตัว ✨';
+            }
+        }
+
+        function showAuthError(msg) {
+            const box = document.getElementById('auth-error-box');
+            if (!box) return;
+            box.textContent = msg;
+            box.classList.remove('hidden');
+        }
+
+        function hideAuthError() {
+            const box = document.getElementById('auth-error-box');
+            if (box) box.classList.add('hidden');
+        }
+
+        function translateFirebaseAuthError(error) {
+            const code = error?.code || '';
+            if (code.includes('invalid-email')) return 'รูปแบบอีเมลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้งครับ';
+            if (code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential')) {
+                return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง หากยังไม่มีบัญชีให้กดแท็บ "สมัครสมาชิกใหม่" ด้านบนครับ';
+            }
+            if (code.includes('email-already-in-use')) return 'อีเมลนี้ถูกสมัครสมาชิกไว้แล้ว กรุณากดแท็บ "เข้าสู่ระบบ" เพื่อใช้งานครับ';
+            if (code.includes('weak-password')) return 'รหัสผ่านสั้นเกินไป กรุณาตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษรครับ';
+            if (code.includes('popup-closed-by-user')) return 'คุณปิดหน้าต่างล็อคอิน Google ก่อนเสร็จสิ้น ลองกดใหม่อีกครั้งนะครับ';
+            if (code.includes('network-request-failed')) return 'ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้ กรุณาตรวจสอบสัญญาณเน็ตครับ';
+            if (code.includes('too-many-requests')) return 'ทำรายการบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่นะครับ';
+            return `เกิดข้อผิดพลาดในการเข้าสู่ระบบ (${code || 'กรุณาลองใหม่'})`;
+        }
+
+        async function handleGoogleLogin() {
+            hideAuthError();
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady()) {
+                showAuthError('ระบบเชื่อมต่อคลาวด์ยังไม่พร้อม กรุณาใช้ "ทดลองใช้งานแบบไม่ล็อคอิน" ด้านล่างได้ทันทีครับ');
+                return;
+            }
+            const btn = document.getElementById('btn-google-login');
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+            try {
+                const provider = new cloud.GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                await cloud.signInWithPopup(cloud.getAuth(), provider);
+            } catch (err) {
+                console.error('Google sign-in error:', err);
+                showAuthError(translateFirebaseAuthError(err));
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }
+        }
+
+        async function handleEmailAuthSubmit(e) {
+            e.preventDefault();
+            hideAuthError();
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady()) {
+                showAuthError('ระบบเชื่อมต่อคลาวด์ยังไม่พร้อม กรุณาใช้ "ทดลองใช้งานแบบไม่ล็อคอิน" ด้านล่างได้ทันทีครับ');
+                return;
+            }
+
+            const email = document.getElementById('auth-email-input').value.trim();
+            const password = document.getElementById('auth-password-input').value;
+            const displayName = document.getElementById('auth-name-input').value.trim();
+            const btn = document.getElementById('btn-auth-submit');
+
+            if (!email || password.length < 6) {
+                showAuthError('กรุณากรอกอีเมลให้ถูกต้อง และตั้งรหัสผ่านอย่างน้อย 6 ตัวอักษรครับ');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+            try {
+                const auth = cloud.getAuth();
+                if (authMode === 'register') {
+                    const cred = await cloud.createUserWithEmailAndPassword(auth, email, password);
+                    const finalName = displayName || email.split('@')[0];
+                    await cloud.updateProfile(cred.user, { displayName: finalName });
+                    showToast('สมัครสมาชิกสำเร็จ! 🎉', `ยินดีต้อนรับคุณ ${finalName} สู่ StepSave ครับ`, 'success');
+                } else {
+                    await cloud.signInWithEmailAndPassword(auth, email, password);
+                    showToast('เข้าสู่ระบบสำเร็จ! 🐷', 'กำลังโหลดกระปุกออมเงินส่วนตัวของคุณ...', 'success');
+                }
+            } catch (err) {
+                console.error('Email auth error:', err);
+                showAuthError(translateFirebaseAuthError(err));
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }
+        }
+
+        async function handlePasswordReset() {
+            hideAuthError();
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady()) {
+                showAuthError('ระบบรีเซ็ตรหัสผ่านต้องการการเชื่อมต่อคลาวด์ครับ');
+                return;
+            }
+            const email = document.getElementById('auth-email-input').value.trim();
+            if (!email) {
+                showAuthError('กรุณากรอกอีเมลของคุณในช่อง "อีเมล" ด้านล่างก่อน แล้วกดปุ่ม "ลืมรหัสผ่าน?" อีกครั้งครับ');
+                document.getElementById('auth-email-input').focus();
+                return;
+            }
+            try {
+                await cloud.sendPasswordResetEmail(cloud.getAuth(), email);
+                showToast('ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว ✉️', `กรุณาตรวจสอบกล่องข้อความในอีเมล ${email} ครับ`, 'success');
+            } catch (err) {
+                showAuthError(translateFirebaseAuthError(err));
+            }
+        }
+
+        function enterGuestMode() {
+            isGuestMode = true;
+            currentUser = {
+                isGuest: true,
+                displayName: 'ผู้ทดลองใช้งาน (Guest)',
+                email: 'บันทึกในเครื่องนี้ชั่วคราว',
+                photoURL: 'https://placehold.co/64x64/FEF7E2/FF7034?text=🧸'
+            };
+            state = loadGuestStateFromLocal();
+            showMainAppUI();
+            showToast('เข้าสู่โหมดทดลองใช้งานแล้ว 🧸', 'ข้อมูลจะถูกบันทึกไว้ในเบราว์เซอร์เครื่องนี้ครับ', 'brand');
+        }
+
+        async function handleLogout() {
+            if (unsubscribeUserDoc) {
+                unsubscribeUserDoc();
+                unsubscribeUserDoc = null;
+            }
+            const cloud = window.StepSaveCloud;
+            if (!isGuestMode && cloud && cloud.isReady() && cloud.getAuth().currentUser) {
+                try {
+                    await cloud.signOut(cloud.getAuth());
+                } catch (e) {
+                    console.error('Sign out error:', e);
+                }
+            }
+            isGuestMode = false;
+            currentUser = null;
+            state = getFreshZeroState();
+            showAuthScreenUI();
+            showToast('ออกจากระบบเรียบร้อย 👋', 'ขอบคุณที่แวะมาออมเงินกับ StepSave นะครับ', 'brand');
+        }
+
+        function showAuthScreenUI() {
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('main-app-screen').classList.add('hidden');
+        }
+
+        function showMainAppUI() {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-app-screen').classList.remove('hidden');
+
+            // อัปเดตข้อมูลโปรไฟล์บน Header
+            const nameEl = document.getElementById('user-display-name');
+            const emailEl = document.getElementById('user-display-email');
+            const avatarEl = document.getElementById('user-avatar-img');
+            const syncBadge = document.getElementById('sync-status-badge');
+            const logoutText = document.getElementById('btn-logout-text');
+
+            if (isGuestMode || !currentUser || currentUser.isGuest) {
+                nameEl.textContent = 'โหมดทดลองใช้งาน';
+                emailEl.textContent = 'เก็บข้อมูลในเครื่องนี้';
+                avatarEl.src = 'https://placehold.co/64x64/FEF7E2/FF7034?text=🧸';
+                syncBadge.textContent = '🧸 โหมดทดลองในเครื่อง';
+                syncBadge.className = 'text-xs font-semibold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full';
+                logoutText.textContent = 'เข้าสู่ระบบ / สมัคร';
+            } else {
+                const displayName = currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'สมาชิก StepSave');
+                nameEl.textContent = displayName;
+                emailEl.textContent = currentUser.email || 'บัญชีส่วนตัว';
+                avatarEl.src = currentUser.photoURL || `https://placehold.co/64x64/FFD9C2/FF7034?text=${encodeURIComponent(displayName.charAt(0).toUpperCase())}`;
+                syncBadge.textContent = '☁️ ซิงก์บัญชีแล้ว';
+                syncBadge.className = 'text-xs font-semibold bg-mint-100 text-mint-600 px-2.5 py-0.5 rounded-full';
+                logoutText.textContent = 'ออกจากระบบ';
+            }
+
+            renderAll();
+        }
+
+        // เชื่อมต่อระบบซิงก์ Firestore แยกตามผู้ใช้แต่ละคน
+        async function setupUserCloudSync(user) {
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady() || !user?.uid) return;
+
+            if (unsubscribeUserDoc) {
+                unsubscribeUserDoc();
+                unsubscribeUserDoc = null;
+            }
+
+            const db = cloud.getDb();
+            const appId = cloud.getAppId();
+            const userDocRef = cloud.doc(db, 'artifacts', appId, 'users', user.uid, 'wallet', 'profileData');
+
+            try {
+                const snap = await cloud.getDoc(userDocRef);
+                const localGuest = loadGuestStateFromLocal();
+                const hasGuestData = hasMeaningfulGuestData(localGuest);
+
+                if (snap.exists()) {
+                    const cloudState = sanitizeState(snap.data());
+                    if (hasGuestData) {
+                        // ถามผู้ใช้ว่าต้องการนำข้อมูล Guest มาซิงก์ทับหรือใช้ข้อมูลคลาวด์เดิม
+                        pendingGuestDataForMerge = localGuest;
+                        pendingCloudDataForMerge = cloudState;
+                        state = cloudState;
+                        showMainAppUI();
+                        document.getElementById('guest-merge-modal').classList.remove('hidden');
+                    } else {
+                        state = cloudState;
+                        showMainAppUI();
+                    }
+                } else {
+                    // ผู้ใช้ใหม่เอี่ยม: หากมีข้อมูล Guest ค้างอยู่ให้นำมาซิงก์เข้าบัญชีใหม่ทันที มิฉะนั้นเริ่มที่ 0 บาท
+                    state = hasGuestData ? localGuest : getFreshZeroState();
+                    if (hasGuestData) {
+                        localStorage.removeItem(GUEST_STORAGE_KEY);
+                        showToast('ซิงก์ข้อมูลเข้าบัญชีใหม่แล้ว! ✨', 'ย้ายข้อมูลที่คุณทดลองออมไว้เข้ามาในบัญชีนี้เรียบร้อย', 'success');
+                    }
+                    await cloud.setDoc(userDocRef, {
+                        ...state,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        email: user.email || '',
+                        displayName: user.displayName || ''
+                    });
+                    showMainAppUI();
+                }
+
+                // เปิด Listener ฟังการอัปเดตแบบ Real-time ข้ามอุปกรณ์
+                unsubscribeUserDoc = cloud.onSnapshot(userDocRef, (docSnap) => {
+                    if (!docSnap.exists()) return;
+                    isApplyingRemoteSnapshot = true;
+                    state = sanitizeState(docSnap.data());
+                    renderAll();
+                    isApplyingRemoteSnapshot = false;
+                }, (err) => {
+                    console.error('Firestore snapshot error:', err);
+                });
+            } catch (err) {
+                console.error('Error loading user cloud profile:', err);
+                state = getFreshZeroState();
+                showMainAppUI();
+                showToast('โหลดข้อมูลคลาวด์ไม่สำเร็จ', 'ระบบเปิดหน้าจอเริ่มต้นที่ 0 บาทให้ใช้งานชั่วคราวครับ', 'warning');
+            }
+        }
+
+        async function resolveGuestMerge(useGuestData) {
+            document.getElementById('guest-merge-modal').classList.add('hidden');
+            if (useGuestData && pendingGuestDataForMerge) {
+                state = pendingGuestDataForMerge;
+                localStorage.removeItem(GUEST_STORAGE_KEY);
+                saveState();
+                renderAll();
+                showToast('นำข้อมูลในเครื่องมาซิงก์แล้ว! ☁️', 'บันทึกข้อมูลการออมลงบัญชีส่วนตัวของคุณเรียบร้อยครับ', 'success');
+            } else {
+                localStorage.removeItem(GUEST_STORAGE_KEY);
+                if (pendingCloudDataForMerge) {
+                    state = pendingCloudDataForMerge;
+                    renderAll();
+                }
+                showToast('โหลดข้อมูลจากบัญชีคลาวด์แล้ว ✨', 'แสดงข้อมูลการออมล่าสุดในบัญชีของคุณครับ', 'brand');
+            }
+            pendingGuestDataForMerge = null;
+            pendingCloudDataForMerge = null;
+        }
+
+        // เริ่มต้นตรวจสอบสถานะการล็อคอินเมื่อ Firebase พร้อม
+        function initAuthListener() {
+            const cloud = window.StepSaveCloud;
+            if (!cloud || !cloud.isReady()) {
+                showAuthScreenUI();
+                return;
+            }
+
+            const auth = cloud.getAuth();
+            cloud.onAuthStateChanged(auth, async (user) => {
+                if (user && !user.isAnonymous) {
+                    isGuestMode = false;
+                    currentUser = user;
+                    await setupUserCloudSync(user);
+                } else {
+                    if (!isGuestMode) {
+                        currentUser = null;
+                        showAuthScreenUI();
+                    }
+                }
+            });
+        }
+
+        window.addEventListener('stepsave-firebase-ready', initAuthListener);
+
+        // ==========================================
+        // 2. ฟังก์ชันช่วยเหลือด้านการเงิน การแจ้งเตือน และเมนูนำทาง
+        // ==========================================
+        function formatCurrency(val) {
+            const num = roundMoney(val);
+            return '฿' + num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatShortCurrency(val) {
+            const num = roundMoney(val);
+            return '฿' + num.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function showToast(title, message, type = 'brand') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const colors = {
+                success: 'bg-mint-50 border-mint-500 text-slate-800',
+                warning: 'bg-cream-100 border-amber-400 text-slate-800',
+                danger: 'bg-rose-50 border-rose-500 text-slate-800',
+                brand: 'bg-peach-50 border-peach-500 text-slate-800'
+            };
+            const icons = {
+                success: '🎉',
+                warning: '💡',
+                danger: '⚠️',
+                brand: '🐷'
+            };
+            const toast = document.createElement('div');
+            toast.className = `pointer-events-auto p-4 rounded-2xl border-2 shadow-lg flex items-start gap-3 transition-all duration-300 ${colors[type] || colors.brand}`;
+            toast.innerHTML = `
+                <span class="text-2xl shrink-0">${icons[type] || '🐷'}</span>
+                <div class="min-w-0 flex-1">
+                    <div class="font-cute font-bold text-sm text-slate-800">${escapeHtml(title)}</div>
+                    <div class="text-xs text-slate-600 mt-0.5 leading-relaxed">${escapeHtml(message)}</div>
+                </div>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3800);
+        }
+
+        function addActivity(title, amount, type, emoji = '🪙') {
+            const now = new Date();
+            const timestamp = now.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' }) + ' ' +
+                              now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            state.activities.unshift({
+                id: 'act-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                title,
+                amount: roundMoney(amount),
+                type,
+                emoji,
+                timestamp
+            });
+            if (state.activities.length > 100) {
+                state.activities = state.activities.slice(0, 100);
+            }
+        }
+
+        function switchTab(tab) {
+            activeTab = tab;
+            const tabs = ['all', 'save', 'goals', 'sim'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (!btn) return;
+                if (t === tab) {
+                    btn.className = 'btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-bold bg-peach-500 text-white shadow-sm flex items-center gap-1.5';
+                } else {
+                    btn.className = 'btn-bounce shrink-0 px-4 py-2 rounded-2xl text-sm font-semibold bg-peach-50 text-slate-700 hover:bg-peach-100 flex items-center gap-1.5';
+                }
+            });
+
+            const secOverview = document.getElementById('section-overview');
+            const secSave = document.getElementById('section-save');
+            const secGoals = document.getElementById('section-goals');
+            const secSim = document.getElementById('section-sim');
+
+            if (tab === 'all') {
+                secOverview.classList.remove('hidden');
+                secSave.classList.remove('hidden');
+                secGoals.classList.remove('hidden');
+                secSim.classList.remove('hidden');
+                secSave.className = 'lg:col-span-5 space-y-6';
+                secGoals.className = 'lg:col-span-7 cute-card p-6 flex flex-col justify-between';
+            } else if (tab === 'save') {
+                secOverview.classList.add('hidden');
+                secSave.classList.remove('hidden');
+                secGoals.classList.add('hidden');
+                secSim.classList.add('hidden');
+                secSave.className = 'lg:col-span-12 space-y-6';
+            } else if (tab === 'goals') {
+                secOverview.classList.add('hidden');
+                secSave.classList.add('hidden');
+                secGoals.classList.remove('hidden');
+                secSim.classList.add('hidden');
+                secGoals.className = 'lg:col-span-12 cute-card p-6 flex flex-col justify-between';
+            } else if (tab === 'sim') {
+                secOverview.classList.add('hidden');
+                secSave.classList.add('hidden');
+                secGoals.classList.add('hidden');
+                secSim.classList.remove('hidden');
+                updateSimulator();
+            }
+        }
+
+        // ==========================================
+        // 3. ระบบ Smart Cashflow Throttling และบันทึกรายรับ-รายจ่าย
+        // ==========================================
+        function getThrottleMultiplier() {
+            if (state.throttleMode === 'shield') return 0.5;
+            if (state.throttleMode === 'boost') return 1.5;
+            return 1.0;
+        }
+
+        function evaluateAutoThrottling(notify = true) {
+            if (!state.autoThrottle) return;
+            const prev = state.throttleMode;
+            if (state.mainBalance < state.lowLiquidityThreshold) {
+                state.throttleMode = 'shield';
+            } else if (state.mainBalance > state.highLiquidityThreshold) {
+                state.throttleMode = 'boost';
+            } else {
+                state.throttleMode = 'normal';
+            }
+            if (notify && prev !== state.throttleMode) {
+                const modeNames = {
+                    shield: '🐢 โหมดประคองตัว (ออมเบาๆ 0.5x)',
+                    normal: '🚶 โหมดออมปกติ (1.0x)',
+                    boost: '🚀 โหมดเร่งออมเต็มสปีด (1.5x)'
+                };
+                showToast('ปรับจังหวะออมอัตโนมัติ', `เปลี่ยนเป็น ${modeNames[state.throttleMode]} ตามสภาพคล่องกระเป๋าหลักครับ`, 'brand');
+            }
+        }
+
+        function toggleAutoThrottle() {
+            const cb = document.getElementById('auto-throttle-toggle');
+            state.autoThrottle = cb ? cb.checked : true;
+            if (state.autoThrottle) {
+                evaluateAutoThrottling(true);
+            }
+            saveState();
+            renderFriendlyAdvisor();
+            renderHabitRules();
+            previewRoundUp();
+        }
+
+        function setThrottleMode(mode) {
+            state.throttleMode = mode;
+            state.autoThrottle = false;
+            const cb = document.getElementById('auto-throttle-toggle');
+            if (cb) cb.checked = false;
+            saveState();
+            renderFriendlyAdvisor();
+            renderHabitRules();
+            previewRoundUp();
+        }
+
+        function renderFriendlyAdvisor() {
+            const mascotEl = document.getElementById('advisor-mascot');
+            const pillEl = document.getElementById('advisor-mode-pill');
+            const headEl = document.getElementById('advisor-headline');
+            const msgEl = document.getElementById('advisor-message');
+            const cb = document.getElementById('auto-throttle-toggle');
+            if (cb) cb.checked = state.autoThrottle;
+
+            const btnShield = document.getElementById('btn-mode-shield');
+            const btnNormal = document.getElementById('btn-mode-normal');
+            const btnBoost = document.getElementById('btn-mode-boost');
+
+            const inactiveCls = 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600';
+            btnShield.className = state.throttleMode === 'shield' ? 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 text-slate-900 shadow-2xs' : inactiveCls;
+            btnNormal.className = state.throttleMode === 'normal' ? 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-peach-500 text-white shadow-2xs' : inactiveCls;
+            btnBoost.className = state.throttleMode === 'boost' ? 'btn-bounce px-2.5 py-1.5 rounded-xl text-xs font-bold bg-mint-500 text-white shadow-2xs' : inactiveCls;
+
+            if (state.throttleMode === 'shield') {
+                mascotEl.textContent = '🐢';
+                pillEl.textContent = 'โหมดประคองตัว (ออมเบาๆ ครึ่งเดียว 0.5x)';
+                pillEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 mb-1';
+                headEl.textContent = state.mainBalance === 0 ? 'เริ่มต้นใหม่ ค่อยๆ เก็บทีละนิดนะ!' : 'ช่วงนี้เงินในกระเป๋าน้อย ระบบช่วยผ่อนแรงออมให้ครับ';
+                msgEl.textContent = `เงินคงเหลือต่ำกว่า ${formatShortCurrency(state.lowLiquidityThreshold)} ระบบจึงลดยอดออมอัตโนมัติเหลือ 0.5 เท่า เพื่อไม่ให้คุณตึงมือ`;
+            } else if (state.throttleMode === 'boost') {
+                mascotEl.textContent = '🚀';
+                pillEl.textContent = 'โหมดเร่งออมเต็มสปีด (ออมเพิ่ม 1.5x)';
+                pillEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-mint-100 text-mint-700 mb-1';
+                headEl.textContent = 'ว้าว! กระเป๋าหลักคล่องตัวมาก เร่งสปีดถึงเป้าหมายกัน!';
+                msgEl.textContent = `เงินคงเหลือเกิน ${formatShortCurrency(state.highLiquidityThreshold)} ระบบช่วยคูณยอดออมให้อัตโนมัติ 1.5 เท่า ให้ฝันเป็นจริงไวขึ้น`;
+            } else {
+                mascotEl.textContent = '🐷';
+                pillEl.textContent = 'โหมดออมจังหวะปกติ (1.0x)';
+                pillEl.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-peach-100 text-peach-700 mb-1';
+                headEl.textContent = 'สภาพคล่องกำลังดี ออมตามแผนได้สบายๆ เลย!';
+                msgEl.textContent = 'เก็บเล็กผสมน้อยตามจังหวะชีวิตที่สมดุล ไม่ตึงและไม่หย่อนจนเกินไปครับ';
+            }
+        }
+
+        function selectCashflowType(type) {
+            document.getElementById('cf-type-input').value = type;
+            const btnIn = document.getElementById('btn-cf-income');
+            const btnEx = document.getElementById('btn-cf-expense');
+            const btnSub = document.getElementById('btn-cf-submit');
+
+            if (type === 'income') {
+                btnIn.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-mint-500 text-white shadow-xs flex items-center justify-center gap-1.5';
+                btnEx.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5';
+                btnSub.className = 'btn-bounce w-full h-full py-3 px-4 bg-mint-500 hover:bg-mint-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5';
+            } else {
+                btnEx.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-bold bg-rose-500 text-white shadow-xs flex items-center justify-center gap-1.5';
+                btnIn.className = 'btn-bounce py-2.5 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-white/60 flex items-center justify-center gap-1.5';
+                btnSub.className = 'btn-bounce w-full h-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white text-base font-bold rounded-2xl shadow-sm flex items-center justify-center gap-1.5';
+            }
+        }
+
+        function quickFillCashflow(amount, type, note) {
+            selectCashflowType(type);
+            document.getElementById('cf-amount-input').value = amount;
+            document.getElementById('cf-note-input').value = note;
+            handleCashflowSubmit(new Event('submit'));
+        }
+
+        function handleCashflowSubmit(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const type = document.getElementById('cf-type-input').value;
+            const amount = roundMoney(document.getElementById('cf-amount-input').value);
+            const note = document.getElementById('cf-note-input').value.trim();
+
+            if (!Number.isFinite(amount) || amount <= 0 || !note) {
+                showToast('กรุณากรอกข้อมูลให้ครบ', 'ระบุจำนวนเงินมากกว่า 0 บาทและรายละเอียดรายการครับ', 'warning');
+                return;
+            }
+
+            if (type === 'income') {
+                state.mainBalance = roundMoney(state.mainBalance + amount);
+                addActivity(note, amount, 'income', '💵');
+                showToast('บันทึกรายรับแล้ว!', `เพิ่มเงิน ${formatCurrency(amount)} เข้ากระเป๋าหลักเรียบร้อย`, 'success');
+            } else {
+                if (state.mainBalance < amount) {
+                    showToast('เงินในกระเป๋าหลักไม่พอจ่ายครับ', `กระเป๋าหลักมีเงินอยู่ ${formatCurrency(state.mainBalance)}`, 'danger');
+                    return;
+                }
+                state.mainBalance = Math.max(0, roundMoney(state.mainBalance - amount));
+                addActivity(note, -amount, 'expense', '🛍️');
+                showToast('บันทึกรายจ่ายแล้ว', `หักเงิน ${formatCurrency(amount)} (${note}) ออกจากกระเป๋าหลัก`, 'warning');
+            }
+
+            document.getElementById('cf-amount-input').value = '';
+            document.getElementById('cf-note-input').value = '';
+            evaluateAutoThrottling(true);
+            saveState();
+            renderAll();
+        }
+
+        // ==========================================
+        // 4. ระบบหยอดกระปุกออมย่อย (Round-up & Habit Rules)
+        // ==========================================
+        function calculateRoundUpDiff(spendAmount, unit) {
+            if (!Number.isFinite(spendAmount) || spendAmount <= 0) return 0;
+            const spendSatang = Math.round(spendAmount * 100);
+            const unitSatang = Math.round(unit * 100);
+            const rem = spendSatang % unitSatang;
+            if (rem === 0) return 0;
+            return roundMoney((unitSatang - rem) / 100);
+        }
+
+        function previewRoundUp() {
+            const spendInput = document.getElementById('ru-spend-input');
+            const unitSelect = document.getElementById('ru-unit-select');
+            const previewEl = document.getElementById('ru-preview-text');
+            const submitBtn = document.getElementById('btn-ru-submit');
+            if (!spendInput || !unitSelect || !previewEl) return;
+
+            const spend = roundMoney(spendInput.value);
+            const unit = Number(unitSelect.value) || 10;
+
+            if (!spend || spend <= 0) {
+                previewEl.textContent = '💡 ลองกรอกยอดซื้อด้านบน ระบบจะคำนวณเงินทอนให้อัตโนมัติ';
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+            }
+
+            const baseDiff = calculateRoundUpDiff(spend, unit);
+            if (baseDiff === 0) {
+                previewEl.textContent = `✨ ยอดซื้อ ${formatCurrency(spend)} ลงท้ายหลัก ${unit} บาทพอดีเป๊ะ ไม่มีเศษเงินทอนให้ปัดครับ`;
+                if (submitBtn) submitBtn.disabled = true;
+                return;
+            }
+
+            if (submitBtn) submitBtn.disabled = false;
+            const mult = getThrottleMultiplier();
+            const actualSave = roundMoney(baseDiff * mult);
+            previewEl.textContent = `🪙 เงินทอนปัดเศษ ${formatCurrency(baseDiff)} × โหมดปัจจุบัน (${mult}x) = จะออมเข้ากระปุก ${formatCurrency(actualSave)}`;
+        }
+
+        function handleRoundUpSubmit(e) {
+            e.preventDefault();
+            const spend = roundMoney(document.getElementById('ru-spend-input').value);
+            const unit = Number(document.getElementById('ru-unit-select').value) || 10;
+            const deductSpend = document.getElementById('ru-deduct-spend').checked;
+
+            const baseDiff = calculateRoundUpDiff(spend, unit);
+            if (baseDiff <= 0) {
+                showToast('ไม่มีเศษทอนให้ปัดครับ', 'ยอดซื้อลงท้ายหลักหน่วยที่เลือกพอดีแล้ว', 'warning');
+                return;
+            }
+
+            const saveAmount = roundMoney(baseDiff * getThrottleMultiplier());
+            const totalNeeded = roundMoney(saveAmount + (deductSpend ? spend : 0));
+
+            if (state.mainBalance < totalNeeded) {
+                showToast('เงินในกระเป๋าหลักไม่พอครับ', `ต้องใช้เงิน ${formatCurrency(totalNeeded)} แต่ในกระเป๋าหลักมี ${formatCurrency(state.mainBalance)}`, 'danger');
+                return;
+            }
+
+            state.mainBalance = Math.max(0, roundMoney(state.mainBalance - totalNeeded));
+            if (deductSpend) {
+                addActivity(`ค่าซื้อของ (ปัดเศษออม)`, -spend, 'expense', '🛒');
+            }
+            depositToSweepWallet(saveAmount, `ปัดเศษเงินทอน (จากยอด ${formatShortCurrency(spend)})`, '🧮');
+
+            document.getElementById('ru-spend-input').value = '';
+            previewRoundUp();
+            evaluateAutoThrottling(false);
+            saveState();
+            renderAll();
+        }
+
+        function depositToSweepWallet(amount, title, emoji = '🪙') {
+            const val = roundMoney(amount);
+            if (val <= 0) return;
+            state.sweepWallet = roundMoney(state.sweepWallet + val);
+            addActivity(title, val, 'micro', emoji);
+
+            if (state.autoSweep && state.sweepWallet >= state.sweepThreshold) {
+                sweepToGoalsNow(true);
+            } else {
+                showToast('หยอดกระปุกสำเร็จ! 🪙', `ออมเพิ่ม ${formatCurrency(val)} เข้ากระปุกพักเงินเรียบร้อย`, 'success');
+            }
+        }
+
+        function triggerHabitRule(id) {
+            const rule = state.habitRules.find(r => r.id === id);
+            if (!rule) return;
+            const saveAmount = roundMoney(rule.amount * getThrottleMultiplier());
+
+            if (state.mainBalance < saveAmount) {
+                showToast('เงินในกระเป๋าหลักไม่พอหยอดกระปุก', `ต้องใช้ ${formatCurrency(saveAmount)} แต่มี ${formatCurrency(state.mainBalance)} ลองบันทึกรายรับก่อนนะครับ`, 'danger');
+                return;
+            }
+
+            state.mainBalance = Math.max(0, roundMoney(state.mainBalance - saveAmount));
+            depositToSweepWallet(saveAmount, `ออมตามพฤติกรรม: ${rule.title}`, rule.emoji || '🌟');
+            evaluateAutoThrottling(false);
+            saveState();
+            renderAll();
+        }
+
+        function openHabitModal() {
+            document.getElementById('habit-modal').classList.remove('hidden');
+        }
+        function closeHabitModal() {
+            document.getElementById('habit-modal').classList.add('hidden');
+        }
+        function handleAddHabitRule(e) {
+            e.preventDefault();
+            const title = document.getElementById('habit-title-input').value.trim();
+            const amount = roundMoney(document.getElementById('habit-amount-input').value);
+            const emoji = document.getElementById('habit-icon-input').value || '🐷';
+
+            if (!title || !Number.isFinite(amount) || amount <= 0) {
+                showToast('ข้อมูลไม่ถูกต้อง', 'กรุณากรอกชื่อกิจกรรมและจำนวนเงินมากกว่า 0 บาทครับ', 'warning');
+                return;
+            }
+
+            state.habitRules.push({
+                id: 'h-' + Date.now(),
+                title,
+                amount,
+                emoji
+            });
+            document.getElementById('habit-title-input').value = '';
+            document.getElementById('habit-amount-input').value = '';
+            closeHabitModal();
+            saveState();
+            renderHabitRules();
+            showToast('สร้างปุ่มออมใหม่แล้ว! 🌟', `กดปุ่ม "${title}" เพื่อหยอดกระปุกได้ทันที`, 'success');
+        }
+
+        function deleteHabitRule(id, e) {
+            if (e) e.stopPropagation();
+            state.habitRules = state.habitRules.filter(r => r.id !== id);
+            saveState();
+            renderHabitRules();
+            showToast('ลบปุ่มพฤติกรรมแล้ว', 'นำปุ่มออกเรียบร้อยครับ', 'brand');
+        }
+
+        function renderHabitRules() {
+            const container = document.getElementById('habit-rules-container');
+            if (!container) return;
+            container.innerHTML = '';
+            const mult = getThrottleMultiplier();
+
+            state.habitRules.forEach(rule => {
+                const actualAmt = roundMoney(rule.amount * mult);
+                const canAfford = state.mainBalance >= actualAmt;
+                const btn = document.createElement('div');
+                btn.onclick = () => triggerHabitRule(rule.id);
+                btn.className = `btn-bounce cursor-pointer p-3 rounded-2xl border-2 transition flex items-center justify-between gap-2 ${
+                    canAfford
+                        ? 'bg-mint-50/70 hover:bg-mint-100 border-mint-200 text-slate-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-500 opacity-85'
+                }`;
+                btn.innerHTML = `
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="text-2xl shrink-0">${escapeHtml(rule.emoji || '🐷')}</span>
+                        <div class="min-w-0">
+                            <div class="font-bold text-xs sm:text-sm truncate">${escapeHtml(rule.title)}</div>
+                            <div class="text-xs font-bold text-mint-600">+${formatShortCurrency(actualAmt)}</div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="deleteHabitRule('${rule.id}', event)" class="text-slate-400 hover:text-rose-500 px-1.5 py-1 text-xs" title="ลบปุ่มนี้">
+                        ✕
+                    </button>
+                `;
+                container.appendChild(btn);
+            });
+        }
+
+        function sweepToGoalsNow(isAuto = false) {
+            const amountToInvest = roundMoney(state.sweepWallet);
+            if (amountToInvest <= 0) return;
+
+            const activeGoals = state.goals.filter(g => Number(g.allocation) > 0);
+            if (activeGoals.length === 0) {
+                showToast('ยังไม่ได้แบ่งสัดส่วนเป้าหมาย', 'กรุณาปรับสัดส่วน % ในกระปุกเป้าหมายอย่างน้อย 1 ใบก่อนส่งเงินครับ', 'warning');
+                return;
+            }
+            const targetGoal = state.goals.find(g => g.id === id);
+            if (targetGoal && targetGoal.current > 0) {
+                state.sweepWallet = roundMoney(state.sweepWallet + targetGoal.current);
+                addActivity(`ย้ายเงินคืนจากเป้าหมายที่ลบ (${targetGoal.name})`, targetGoal.current, 'micro', '🔄');
+            }
+            state.goals = state.goals.filter(g => g.id !== id);
+            saveState();
+            showToast('ลบกระปุกเป้าหมายแล้ว', 'เงินที่เคยเก็บไว้ถูกย้ายกลับเข้ากระปุกพักเงินอย่างปลอดภัย', 'brand');
+            renderAll();
+        }
+
+        function openAddGoalModal(editId = null) {
+            const modal = document.getElementById('add-goal-modal');
+            const titleEl = document.getElementById('goal-modal-title');
+            const editInput = document.getElementById('goal-edit-id');
+
+            if (editId) {
+                const g = state.goals.find(item => item.id === editId);
+                if (!g) return;
+                titleEl.innerHTML = '<span>✏️</span> แก้ไขกระปุกเป้าหมาย';
+                editInput.value = g.id;
+                document.getElementById('goal-name-input').value = g.name;
+                document.getElementById('goal-target-input').value = g.target;
+                document.getElementById('goal-alloc-input').value = g.allocation;
+                document.getElementById('goal-risk-input').value = g.risk;
+            } else {
+                titleEl.innerHTML = '<span>🎯</span> สร้างกระปุกเป้าหมายใหม่';
+                editInput.value = '';
+                document.getElementById('new-goal-form').reset();
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeAddGoalModal() {
+            document.getElementById('add-goal-modal').classList.add('hidden');
+            document.getElementById('new-goal-form').reset();
+        }
+
+        function handleSaveGoal(e) {
+            e.preventDefault();
+            const editId = document.getElementById('goal-edit-id').value;
+            const name = document.getElementById('goal-name-input').value.trim();
+            const target = roundMoney(document.getElementById('goal-target-input').value);
+            const alloc = Math.max(0, Math.min(100, Math.round(Number(document.getElementById('goal-alloc-input').value) || 0)));
+            const risk = document.getElementById('goal-risk-input').value;
+
+            if (!name || !Number.isFinite(target) || target <= 0) {
+                showToast('ข้อมูลไม่ถูกต้อง', 'กรุณากรอกชื่อเป้าหมายและยอดเป้าหมายมากกว่า 0 บาทครับ', 'warning');
+                return;
+            }
+
+            const riskConfig = {
+                low: { label: 'ปลอดภัย เงินต้นไม่หาย', ret: 2.5, emoji: '🛡️', color: 'mint' },
+                medium: { label: 'สมดุล ค่อยๆ งอกเงย', ret: 5.5, emoji: '⚖️', color: 'peach' },
+                high: { label: 'เน้นเติบโตระยะยาว', ret: 8.5, emoji: '🚀', color: 'sky' }
+            };
+            const cfg = riskConfig[risk] || riskConfig.medium;
+
+            if (editId) {
+                const existing = state.goals.find(g => g.id === editId);
+                if (existing) {
+                    existing.name = name;
+                    existing.target = target;
+                    existing.allocation = alloc;
+                    existing.risk = risk;
+                    existing.riskLabel = cfg.label;
+                    existing.expectedReturn = cfg.ret;
+                    existing.emoji = cfg.emoji;
+                    existing.color = cfg.color;
+                }
+                showToast('แก้ไขเป้าหมายเรียบร้อย', `บันทึกข้อมูล "${name}" แล้วครับ`, 'success');
+            } else {
+                state.goals.push({
+                    id: 'goal-' + Date.now(),
+                    name: name,
+                    risk: risk,
+                    riskLabel: cfg.label,
+                    expectedReturn: cfg.ret,
+                    current: 0,
+                    target: target,
+                    allocation: alloc,
+                    emoji: cfg.emoji,
+                    color: cfg.color
+                });
+                showToast('เพิ่มกระปุกเป้าหมายใหม่แล้ว!', `เริ่มสะสมเงินให้ "${name}" (เริ่มต้น ฿0.00) ได้เลย`, 'success');
+            }
+
+            closeAddGoalModal();
+            saveState();
+            renderAll();
+        }
+
+        function openGoalTransferModal(goalId) {
+            const goal = state.goals.find(g => g.id === goalId);
+            if (!goal) return;
+            document.getElementById('gt-goal-id').value = goal.id;
+            document.getElementById('gt-goal-name').textContent = `${goal.emoji || '🎯'} ${goal.name}`;
+            document.getElementById('gt-goal-current').textContent = formatCurrency(goal.current);
+            document.getElementById('gt-main-balance').textContent = formatCurrency(state.mainBalance);
+            document.getElementById('gt-amount-input').value = '';
+            document.getElementById('goal-transfer-modal').classList.remove('hidden');
+        }
+
+        function closeGoalTransferModal() {
+            document.getElementById('goal-transfer-modal').classList.add('hidden');
+        }
+
+        function handleGoalTransferSubmit(e) {
+            e.preventDefault();
+            const goalId = document.getElementById('gt-goal-id').value;
+            const action = document.getElementById('gt-action-select').value;
+            const amount = roundMoney(document.getElementById('gt-amount-input').value);
+            const goal = state.goals.find(g => g.id === goalId);
+            if (!goal || !Number.isFinite(amount) || amount <= 0) {
+                showToast('กรุณากรอกจำนวนเงินให้ถูกต้อง', 'จำนวนเงินต้องมากกว่า 0 บาทครับ', 'warning');
+                return;
+            }
+
+            if (action === 'deposit') {
+                if (state.mainBalance < amount) {
+                    showToast('เงินในกระเป๋าหลักไม่พอครับ', `กระเป๋าหลักมีเงินอยู่ ${formatCurrency(state.mainBalance)}`, 'danger');
+                    return;
+                }
+                const wasBelow = goal.current < goal.target;
+                state.mainBalance = Math.max(0, roundMoney(state.mainBalance - amount));
+                goal.current = roundMoney(goal.current + amount);
+                addActivity(`เติมเงินเข้ากระปุก: ${goal.name}`, amount, 'invest', '💰');
+                
+                if (wasBelow && goal.current >= goal.target && typeof confetti === 'function') {
+                    confetti({ particleCount: 100, spread: 75, origin: { y: 0.6 } });
+                    showToast('🎉 ยินดีด้วย! เก็บครบเป้าหมายแล้ว!', `เติมเงิน ${formatCurrency(amount)} เข้า "${goal.name}" สำเร็จ!`, 'success');
+                } else {
+                    showToast('เติมเงินเข้ากระปุกสำเร็จ!', `หยอดเงิน ${formatCurrency(amount)} เข้า "${goal.name}" แล้วครับ`, 'success');
+                }
+            } else {
+                if (goal.current < amount) {
+                    showToast('เงินในกระปุกนี้ไม่พอถอนครับ', `กระปุกนี้มีเงินสะสมอยู่ ${formatCurrency(goal.current)}`, 'danger');
+                    return;
+                }
+                goal.current = Math.max(0, roundMoney(goal.current - amount));
+                state.mainBalance = roundMoney(state.mainBalance + amount);
+                addActivity(`ถอนเงินจากกระปุก: ${goal.name}`, amount, 'income', '💸');
+                showToast('ถอนเงินกลับกระเป๋าหลักแล้ว', `ย้ายเงิน ${formatCurrency(amount)} จาก "${goal.name}" กลับมาใช้จ่ายแล้ว`, 'warning');
+            }
+
+            closeGoalTransferModal();
+            evaluateAutoThrottling(false);
+            saveState();
+            renderAll();
+        }
+
+        function renderGoals() {
+            const container = document.getElementById('goals-container');
+            container.innerHTML = '';
+
+            const totalAlloc = state.goals.reduce((sum, g) => sum + Number(g.allocation || 0), 0);
+            const badgeEl = document.getElementById('total-allocation-badge');
+            const warnText = document.getElementById('allocation-warning-text');
+            const normBtn = document.getElementById('btn-normalize-alloc');
+
+            badgeEl.textContent = `${totalAlloc}%`;
+            if (totalAlloc === 100) {
+                badgeEl.className = 'font-bold px-3 py-0.5 rounded-full bg-mint-100 text-mint-600';
+                warnText.textContent = 'แบ่งสัดส่วนครบ 100% พอดีเป๊ะ! ✨';
+                warnText.className = 'text-xs sm:text-sm text-slate-600';
+                normBtn.classList.add('hidden');
+            } else {
+                badgeEl.className = 'font-bold px-3 py-0.5 rounded-full bg-rose-100 text-rose-600';
+                warnText.textContent = totalAlloc < 100 ? `ยังขาดอีก ${100 - totalAlloc}%` : `เกินมา ${totalAlloc - 100}%`;
+                warnText.className = 'text-xs sm:text-sm font-bold text-rose-600';
+                normBtn.classList.remove('hidden');
+            }
+
+            const colorClasses = {
+                mint: { cardBg: 'bg-mint-50/40 border-mint-200', iconBg: 'bg-mint-100', bar: 'from-mint-500 to-emerald-400', text: 'text-mint-600', badge: 'bg-mint-100 text-mint-700' },
+                peach: { cardBg: 'bg-peach-50/40 border-peach-200', iconBg: 'bg-peach-100', bar: 'from-peach-500 to-amber-400', text: 'text-peach-600', badge: 'bg-peach-100 text-peach-700' },
+                sky: { cardBg: 'bg-skysoft-50/40 border-skysoft-200', iconBg: 'bg-skysoft-100', bar: 'from-skysoft-500 to-indigo-400', text: 'text-skysoft-600', badge: 'bg-skysoft-100 text-skysoft-700' }
+            };
+
+            state.goals.forEach(goal => {
+                const pct = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
+                const c = colorClasses[goal.color] || colorClasses.peach;
+                const isDone = goal.current >= goal.target && goal.target > 0;
+
+                const card = document.createElement('div');
+                card.className = `p-5 rounded-3xl border-2 ${isDone ? 'border-mint-500 bg-mint-50/60' : c.cardBg} transition`;
+                card.innerHTML = `
+                    <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-2xl ${c.iconBg} flex items-center justify-center text-2xl shrink-0">
+                                ${escapeHtml(goal.emoji || '🎯')}
+                            </div>
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h3 class="font-cute font-bold text-base sm:text-lg text-slate-800">${escapeHtml(goal.name)}</h3>
+                                    ${isDone ? '<span class="text-xs font-bold bg-mint-500 text-white px-2.5 py-0.5 rounded-full">🎉 สำเร็จแล้ว!</span>' : ''}
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2 mt-1">
+                                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${c.badge}">${escapeHtml(goal.riskLabel)}</span>
+                                    <span class="text-xs text-slate-500">ดอกผล ~${goal.expectedReturn}%/ปี</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="openGoalTransferModal('${goal.id}')" class="btn-bounce px-3.5 py-2 rounded-xl bg-mint-500 hover:bg-mint-600 text-white text-xs sm:text-sm font-bold shadow-2xs">
+                                💰 เติม / ถอน
+                            </button>
+                            <button onclick="openAddGoalModal('${goal.id}')" class="btn-bounce w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-peach-600 flex items-center justify-center" title="แก้ไขเป้าหมาย">
+                                ✏️
+                            </button>
+                            <button onclick="deleteGoal('${goal.id}')" class="btn-bounce w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-500 flex items-center justify-center" title="ลบเป้าหมาย">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ยอดเงินและหลอดความคืบหน้าสดใส -->
+                    <div class="bg-white/90 p-3.5 rounded-2xl border border-white mb-3">
+                        <div class="flex justify-between items-baseline mb-1.5">
+                            <div>
+                                <span class="text-lg sm:text-xl font-bold text-slate-800">${formatCurrency(goal.current)}</span>
+                                <span class="text-xs sm:text-sm text-slate-500"> / เป้าหมาย ${formatShortCurrency(goal.target)}</span>
+                            </div>
+                            <span class="text-sm font-bold ${c.text}">ได้แล้ว ${pct}%</span>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-3.5 p-0.5 overflow-hidden">
+                            <div class="bg-gradient-to-r ${c.bar} h-full rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- ตัวปรับสัดส่วนแบ่งเงินออม (%) -->
+                    <div class="flex items-center justify-between gap-3 pt-1">
+                        <span class="text-xs sm:text-sm font-semibold text-slate-600">
+                            🍰 แบ่งเงินออมให้กระปุกนี้:
+                        </span>
+                        <div class="flex items-center gap-3 flex-1 max-w-[230px]">
+                            <input type="range" min="0" max="100" step="5" value="${goal.allocation}" oninput="updateGoalAllocation('${goal.id}', this.value)" class="w-full">
+                            <span class="text-sm font-bold text-slate-800 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 w-14 text-center">${goal.allocation}%</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // ==========================================
+        // 5. เครื่องมือจำลองสถานการณ์อนาคต (What-If Simulator)
+        // ==========================================
+        function updateSimulator() {
+            const dailySave = Number(document.getElementById('sim-daily-slider').value);
+            const annualReturn = Number(document.getElementById('sim-return-slider').value);
+            const years = Number(document.getElementById('sim-years-slider').value);
+            const useActual = document.getElementById('sim-use-actual-toggle').checked;
+
+            document.getElementById('sim-daily-val').textContent = `฿${dailySave} / วัน`;
+            document.getElementById('sim-return-val').textContent = `${annualReturn.toFixed(1)}% / ปี`;
+            document.getElementById('sim-years-val').textContent = `${years} ปี`;
+            document.getElementById('sim-horizon-label').textContent = `เงินก้อนคาดการณ์ในอีก ${years} ปีข้างหน้า`;
+
+            const actualWealth = roundMoney(state.goals.reduce((s, g) => s + g.current, 0) + state.sweepWallet);
+            document.getElementById('sim-actual-wealth-text').textContent = `เงินเก็บจริงวันนี้: ${formatCurrency(actualWealth)}`;
+
+            const startingWealth = useActual ? actualWealth : 0;
+            document.getElementById('sim-starting-note').textContent = `เริ่มนับจากเงินเก็บจริงวันนี้: ${formatCurrency(startingWealth)}`;
+
+            const monthlySave = dailySave * 30;
+            const monthlyRate = (annualReturn / 100) / 12;
+
+            const labels = [];
+            const principalData = [];
+            const totalWealthData = [];
+
+            let currentTotal = startingWealth;
+            let currentPrincipal = startingWealth;
+
+            for (let year = 0; year <= years; year++) {
+                labels.push(year === 0 ? 'วันนี้' : `ปีที่ ${year}`);
+                principalData.push(Math.round(currentPrincipal));
+                totalWealthData.push(Math.round(currentTotal));
+
+                for (let m = 0; m < 12; m++) {
+                    currentTotal = (currentTotal + monthlySave) * (1 + monthlyRate);
+                    currentPrincipal += monthlySave;
+                }
+            }
+
+            const finalTotal = totalWealthData[years];
+            const finalPrincipal = principalData[years];
+            const finalInterest = Math.max(0, finalTotal - finalPrincipal);
+
+            document.getElementById('sim-future-total').textContent = formatShortCurrency(finalTotal);
+            document.getElementById('sim-principal-total').textContent = formatShortCurrency(finalPrincipal);
+            document.getElementById('sim-interest-total').textContent = `+${formatShortCurrency(finalInterest)}`;
+
+            renderChart(labels, principalData, totalWealthData);
+        }
+
+        function renderChart(labels, principalData, totalWealthData) {
+            const canvas = document.getElementById('wealthGrowthChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            if (wealthChart) {
+                wealthChart.data.labels = labels;
+                wealthChart.data.datasets[0].data = totalWealthData;
+                wealthChart.data.datasets[1].data = principalData;
+                wealthChart.resize();
+                wealthChart.update('none');
+                return;
+            }
+
+            wealthChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'เงินออมรวมดอกผลงอกเงย ✨',
+                            data: totalWealthData,
+                            borderColor: '#FF7034',
+                            backgroundColor: 'rgba(255, 112, 52, 0.14)',
+                            borderWidth: 3.5,
+                            pointBackgroundColor: '#FF7034',
+                            pointBorderColor: '#ffffff',
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.35
+                        },
+                        {
+                            label: 'เงินต้นที่เราหยอดเอง',
+                            data: principalData,
+                            borderColor: '#22B07D',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2.5,
+                            borderDash: [6, 6],
+                            pointRadius: 2,
+                            fill: false,
+                            tension: 0.35
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { font: { family: 'Prompt', size: 13 }, usePointStyle: true, boxWidth: 10 }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1E293B',
+                            titleFont: { family: 'Prompt', size: 14 },
+                            bodyFont: { family: 'Prompt', size: 13 },
+                            padding: 12,
+                            cornerRadius: 14,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ฿${context.parsed.y.toLocaleString('th-TH')}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Prompt', size: 12 }, color: '#64748B' }
+                        },
+                        y: {
+                            border: { display: false },
+                            grid: { color: '#FFF0E6' },
+                            ticks: {
+                                font: { family: 'Prompt', size: 12 },
+                                color: '#64748B',
+                                callback: function(value) {
+                                    if (value >= 1000000) return '฿' + (value / 1000000).toFixed(1) + ' ล้าน';
+                                    if (value >= 1000) return '฿' + (value / 1000) + ' พัน';
+                                    return '฿' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // 6. การตั้งค่า, Export CSV, รีเซ็ตเป็น 0 และ Render Pipeline
+        // ==========================================
+        function openSettingsModal() {
+            document.getElementById('set-sweep-threshold').value = state.sweepThreshold;
+            document.getElementById('set-low-threshold').value = state.lowLiquidityThreshold;
+            document.getElementById('set-high-threshold').value = state.highLiquidityThreshold;
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+        function handleSaveSettings(e) {
+            e.preventDefault();
+            const sweepTh = roundMoney(document.getElementById('set-sweep-threshold').value);
+            const lowTh = roundMoney(document.getElementById('set-low-threshold').value);
+            const highTh = roundMoney(document.getElementById('set-high-threshold').value);
+
+            if (!Number.isFinite(sweepTh) || sweepTh < 10) {
+                showToast('ยอดเกณฑ์กระปุกพักเงินต่ำเกินไป', 'กรุณากำหนดอย่างน้อย 10 บาทครับ', 'danger');
+                return;
+            }
+            if (highTh <= lowTh) {
+                showToast('ตัวเลขยังไม่ถูกต้องครับ', 'เกณฑ์เปิดโหมดเร่งออม ต้องมากกว่าเกณฑ์โหมดประหยัดนะครับ', 'danger');
+                return;
+            }
+
+            state.sweepThreshold = sweepTh;
+            state.lowLiquidityThreshold = lowTh;
+            state.highLiquidityThreshold = highTh;
+            closeSettingsModal();
+            evaluateAutoThrottling(false);
+            saveState();
+            renderAll();
+            showToast('บันทึกการตั้งค่าเรียบร้อย!', 'ปรับเกณฑ์ช่วยออมอัตโนมัติตามที่คุณต้องการแล้วครับ', 'success');
+        }
+
+        function exportTransactionsCSV() {
+            if (state.activities.length === 0) {
+                showToast('ยังไม่มีรายการในสมุดบันทึก', 'ลองจดรายรับ-รายจ่าย หรือกดหยอดกระปุกออมย่อยก่อนส่งออกไฟล์นะครับ', 'warning');
+                return;
+            }
+            const typeMap = {
+                income: 'รายรับเข้า',
+                expense: 'รายจ่ายออก',
+                micro: 'ออมย่อยเข้ากระปุกพัก',
+                invest: 'โอนเข้ากระปุกเป้าหมาย'
+            };
+            const headers = ['วันเวลา,รายการ,ประเภท,จำนวนเงิน(บาท)'];
+            const rows = state.activities.map(a => {
+                const safeTitle = `"${String(a.title).replace(/"/g, '""')}"`;
+                const typeLabel = typeMap[a.type] || a.type;
+                return `"${a.timestamp}",${safeTitle},"${typeLabel}",${roundMoney(a.amount).toFixed(2)}`;
+            });
+            const csvContent = '\uFEFF' + headers.concat(rows).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `StepSave_สมุดบันทึก_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('ดาวน์โหลดไฟล์ CSV สำเร็จ!', 'สามารถเปิดดูสมุดบันทึกในโปรแกรม Excel ได้เลยครับ', 'success');
+        }
+
+        function openResetConfirmModal() {
+            document.getElementById('reset-confirm-modal').classList.remove('hidden');
+        }
+        function closeResetConfirmModal() {
+            document.getElementById('reset-confirm-modal').classList.add('hidden');
+        }
+        function confirmResetAllToZero() {
+            if (isGuestMode || !currentUser || currentUser.isGuest) {
+                localStorage.removeItem(GUEST_STORAGE_KEY);
+            }
+            state = getFreshZeroState();
+            saveState();
+            closeResetConfirmModal();
+            renderAll();
+            showToast('เริ่มนับ 0 ใหม่เรียบร้อย!', 'ล้างข้อมูลในบัญชีนี้กลับเป็น 0 บาท พร้อมเริ่มต้นวางแผนใหม่แล้วครับ', 'brand');
+        }
+
+        function renderSummary() {
+            const goalsTotal = roundMoney(state.goals.reduce((s, g) => s + g.current, 0));
+            const totalWealth = roundMoney(goalsTotal + state.sweepWallet);
+
+            document.getElementById('total-wealth-display').textContent = formatCurrency(totalWealth);
+            document.getElementById('main-balance-display').textContent = formatCurrency(state.mainBalance);
+            document.getElementById('sweep-wallet-summary').textContent = formatCurrency(state.sweepWallet);
+            document.getElementById('sweep-card-hint').textContent = `สะสมครบ ${formatShortCurrency(state.sweepThreshold)} จะย้ายเข้าเป้าหมายอัตโนมัติ`;
+            document.getElementById('auto-sweep-checkbox').checked = state.autoSweep;
+
+            const subSummaryEl = document.getElementById('wealth-sub-summary');
+            if (totalWealth === 0) {
+                subSummaryEl.textContent = 'เริ่มต้นใหม่ (฿0.00) มาเริ่มหยอดกระปุกกันเลย!';
+            } else {
+                subSummaryEl.textContent = `อยู่ในเป้าหมาย ${formatShortCurrency(goalsTotal)} + กระปุกพัก ${formatShortCurrency(state.sweepWallet)}`;
+            }
+
+            // อัปเดต Sweep Wallet UI
+            const sweepPct = state.sweepThreshold > 0 ? Math.min(100, Math.round((state.sweepWallet / state.sweepThreshold) * 100)) : 0;
+            document.getElementById('sweep-progress-bar').style.width = `${sweepPct}%`;
+            document.getElementById('sweep-percent-text').textContent = state.sweepWallet >= state.sweepThreshold 
+                ? 'ครบเกณฑ์พร้อมส่งแล้ว! 🎉' 
+                : `${sweepPct}% (เป้าหมาย ${formatShortCurrency(state.sweepThreshold)})`;
+
+            const manualSweepBtn = document.getElementById('btn-manual-sweep');
+            manualSweepBtn.disabled = state.sweepWallet <= 0;
+
+            const totalAlloc = state.goals.reduce((s, g) => s + Number(g.allocation || 0), 0);
+            if (totalAlloc > 0) {
+                const weightedRet = state.goals.reduce((s, g) => s + (g.expectedReturn * (Number(g.allocation || 0) / totalAlloc)), 0);
+                document.getElementById('weighted-return-display').textContent = `${weightedRet.toFixed(1)}% / ปี`;
+            } else {
+                document.getElementById('weighted-return-display').textContent = `0.0% / ปี`;
+            }
+        }
+
+        function renderActivityLog() {
+            const list = document.getElementById('activity-log-list');
+            document.getElementById('activity-count-badge').textContent = `${state.activities.length} รายการ`;
+            list.innerHTML = '';
+
+            if (state.activities.length === 0) {
+                list.innerHTML = `
+                    <div class="text-center py-6 px-4 rounded-2xl bg-peach-50/60 border-2 border-dashed border-peach-200 text-sm text-slate-500">
+                        <span class="text-2xl block mb-1">📖</span>
+                        สมุดบันทึกยังว่างอยู่ ลองจดรายรับหรือกดหยอดกระปุกดูนะครับ
+                    </div>
+                `;
+                return;
+            }
+
+            state.activities.slice(0, 20).forEach(act => {
+                const badgeColor = act.type === 'invest' 
+                    ? 'text-skysoft-600 bg-skysoft-100' 
+                    : (act.amount >= 0 ? 'text-mint-600 bg-mint-100' : 'text-rose-600 bg-rose-100');
+
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 text-sm';
+                item.innerHTML = `
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-lg shrink-0">
+                            ${escapeHtml(act.emoji || '🪙')}
+                        </div>
+                        <div class="truncate">
+                            <div class="font-bold text-slate-800 truncate">${escapeHtml(act.title)}</div>
+                            <div class="text-xs text-slate-400">${escapeHtml(act.timestamp)}</div>
+                        </div>
+                    </div>
+                    <span class="font-bold px-2.5 py-1 rounded-xl shrink-0 ${badgeColor}">
+                        ${act.amount >= 0 ? '+' : ''}${formatCurrency(act.amount)}
+                    </span>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function renderAll() {
+            renderSummary();
+            renderFriendlyAdvisor();
+            renderHabitRules();
+            renderGoals();
+            renderActivityLog();
+            previewRoundUp();
+            updateSimulator();
+        }
+
+        // รองรับการกดปุ่ม Esc เพื่อปิดหน้าต่าง Modal ทุกตัวได้อย่างสะดวก
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeAddGoalModal();
+                closeGoalTransferModal();
+                closeHabitModal();
+                closeSettingsModal();
+                closeResetConfirmModal();
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.StepSaveCloud && window.StepSaveCloud.isReady()) {
+                initAuthListener();
+            } else {
+                showAuthScreenUI();
+            }
+        });
+
+        // ผูกฟังก์ชันทั้งหมดเข้ากับ window อย่างชัดเจนเพื่อป้องกัน ReferenceError ในทุกสถานการณ์
+        Object.assign(window, {
+            switchAuthTab,
+            handleGoogleLogin,
+            handleEmailAuthSubmit,
+            handlePasswordReset,
+            enterGuestMode,
+            handleLogout,
+            resolveGuestMerge,
+            switchTab,
+            toggleAutoThrottle,
+            setThrottleMode,
+            selectCashflowType,
+            quickFillCashflow,
+            handleCashflowSubmit,
+            previewRoundUp,
+            handleRoundUpSubmit,
+            triggerHabitRule,
+            openHabitModal,
+            closeHabitModal,
+            handleAddHabitRule,
+            deleteHabitRule,
+            sweepToGoalsNow,
+            updateGoalAllocation,
+            normalizeAllocations,
+            deleteGoal,
+            openAddGoalModal,
+            closeAddGoalModal,
+            handleSaveGoal,
+            openGoalTransferModal,
+            closeGoalTransferModal,
+            handleGoalTransferSubmit,
+            updateSimulator,
+            openSettingsModal,
+            closeSettingsModal,
+            handleSaveSettings,
+            exportTransactionsCSV,
+            openResetConfirmModal,
+            closeResetConfirmModal,
+            confirmResetAllToZero
+        });
+    </script>
+</body>
+</html>
